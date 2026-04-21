@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>⚽ Apostas Futebol</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f172a;color:#f1f5f9;font-family:'Inter',system-ui,sans-serif;min-height:100vh;padding-bottom:60px}
+header{background:#1e293b;border-bottom:2px solid #3b82f6;padding:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:50}
+.logo{font-size:20px;font-weight:800;letter-spacing:-.5px}
+.badge{background:#0f172a;border:1px solid #334155;border-radius:20px;padding:4px 14px;font-size:12px;color:#64748b}
+
+/* Tabs */
+.tabs{display:flex;gap:0;border-bottom:1px solid #334155;background:#1e293b;position:sticky;top:61px;z-index:40}
+.tab{padding:12px 20px;font-size:13px;font-weight:600;cursor:pointer;color:#64748b;border-bottom:3px solid transparent;transition:all .2s;background:none;border-top:none;border-left:none;border-right:none}
+.tab:hover{color:#f1f5f9}
+.tab.ativo{color:#38bdf8;border-bottom-color:#38bdf8}
+
+main{max-width:920px;margin:0 auto;padding:20px 16px;display:flex;flex-direction:column;gap:24px}
+
+/* Seção de apostas */
+.liga-bloco{display:flex;flex-direction:column;gap:10px}
+.liga-header{font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#94a3b8;padding-bottom:10px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between}
+.conta-badge{background:#3b82f620;color:#38bdf8;border-radius:12px;padding:2px 10px;font-size:11px}
+
+/* Card de aposta */
+.aposta{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.aposta.forte{border-left:3px solid #34d399}
+.aposta.medio{border-left:3px solid #fbbf24}
+.logos{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.logos img{width:22px;height:22px;object-fit:contain}
+.aposta-info{flex:1;min-width:140px}
+.aposta-partida{font-size:11px;color:#64748b;margin-bottom:2px}
+.aposta-mercado{font-size:14px;font-weight:700;color:#f1f5f9}
+.aposta-meta{display:flex;align-items:center;gap:12px;margin-left:auto}
+.aposta-data{font-size:11px;color:#475569;white-space:nowrap}
+.prob-badge{padding:5px 12px;border-radius:8px;font-size:15px;font-weight:800;min-width:58px;text-align:center}
+.prob-forte{background:#052e16;color:#34d399}
+.prob-medio{background:#1c1a05;color:#fbbf24}
+.odd-impl{font-size:11px;color:#475569;text-align:center;margin-top:2px}
+
+/* Jogos (análise) */
+.card{background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden}
+.card-topo{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;gap:12px;flex-wrap:wrap}
+.times{display:flex;align-items:center;gap:16px;flex:1;min-width:180px}
+.time-bloco{display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;text-align:center}
+.time-bloco img{width:36px;height:36px;object-fit:contain}
+.time-nome{font-size:13px;font-weight:600;line-height:1.2}
+.vs{font-size:17px;font-weight:800;color:#475569;flex-shrink:0}
+.card-meta{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.horario{font-size:13px;color:#64748b;white-space:nowrap}
+.data-tag{font-size:11px;color:#3b82f6;font-weight:600}
+.status-live{color:#ef4444;font-weight:700;font-size:12px;animation:blink 1.2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+.probs{padding:0 16px 14px;display:flex;flex-direction:column;gap:10px}
+.resultado{display:flex;gap:8px}
+.res-item{flex:1;background:#0f172a;border-radius:8px;padding:8px 6px;text-align:center}
+.res-label{font-size:11px;color:#64748b;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res-valor{font-size:18px;font-weight:700}
+.res-bar{height:4px;border-radius:2px;margin-top:6px;background:#1e293b}
+.res-fill{height:100%;border-radius:2px}
+.ou-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.ou-item{background:#0f172a;border-radius:6px;padding:7px 8px;display:flex;justify-content:space-between;align-items:center}
+.ou-label{font-size:11px;color:#94a3b8}
+.ou-val{font-size:13px;font-weight:700}
+.cant-row{display:flex;justify-content:space-between;font-size:11px;color:#475569;padding:0 2px}
+.placares-row{display:flex;gap:6px;flex-wrap:wrap}
+.plac{background:#0f172a;border-radius:6px;padding:5px 10px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.plac-score{font-size:13px;font-weight:700;color:#f1f5f9}
+.plac-pct{font-size:11px;color:#64748b}
+.sem-probs{font-size:12px;color:#475569;padding:0 16px 14px;font-style:italic}
+.vazio{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:40px;text-align:center;color:#475569;font-size:15px}
+
+/* Filtro de data */
+.filtros{display:flex;gap:8px;flex-wrap:wrap}
+.filtro-btn{padding:6px 14px;border-radius:20px;border:1px solid #334155;background:none;color:#64748b;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s}
+.filtro-btn.ativo{background:#3b82f620;border-color:#3b82f6;color:#38bdf8}
+
+.verde{color:#34d399}.amarelo{color:#fbbf24}.vermelho{color:#f87171}.azul{color:#38bdf8}
+
+/* Verificar */
+.ver-card{background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden;margin-bottom:12px}
+.ver-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #334155;flex-wrap:wrap;gap:8px}
+.ver-match{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px}
+.ver-match img{width:26px;height:26px;object-fit:contain}
+.ver-body{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.ver-col{padding:14px 16px}
+.ver-col:first-child{border-right:1px solid #334155}
+.ver-col-titulo{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.ver-col-titulo img{width:20px;height:20px;object-fit:contain}
+.ver-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #0f172a;font-size:13px}
+.ver-row:last-child{border-bottom:none}
+.ver-lbl{color:#64748b}
+.ver-val{font-weight:600;color:#f1f5f9}
+.forma-pills{display:flex;gap:4px;flex-wrap:wrap;margin:8px 0}
+.pill{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800}
+.pill-W{background:#052e16;color:#34d399}
+.pill-D{background:#1c1a05;color:#fbbf24}
+.pill-L{background:#450a0a;color:#f87171}
+.ver-poisson{background:#0f172a;padding:12px 16px;border-top:1px solid #334155;font-size:12px;color:#94a3b8;display:flex;flex-direction:column;gap:4px}
+.ver-poisson strong{color:#38bdf8}
+.ver-poisson code{background:#1e293b;padding:2px 6px;border-radius:4px;font-family:monospace;color:#f1f5f9}
+
+@media(max-width:500px){.ou-grid{grid-template-columns:repeat(2,1fr)}.tab{padding:10px 14px;font-size:12px}.ver-body{grid-template-columns:1fr}.ver-col:first-child{border-right:none;border-bottom:1px solid #334155}}
+</style>
+</head>
+<body>
+<script>window.DATA={"data": "21/04/2026 09:33", "hoje": "2026-04-21", "datas": ["2026-04-21", "2026-04-22", "2026-04-23"], "total_jogos": 15, "ligas": {"🇧🇷 Brasileirão Série B": [{"data": "23/04", "data_iso": "2026-04-23", "horario": "21:30", "status": "NS", "home": {"id": 1193, "nome": "Cuiaba", "logo": "https://media.api-sports.io/football/teams/1193.png"}, "away": {"id": 2618, "nome": "Botafogo SP", "logo": "https://media.api-sports.io/football/teams/2618.png"}, "probs": {"lam_c": 0.3, "lam_f": 1.0, "vc": 11.0, "emp": 36.1, "vf": 53.0, "dc1x": 47.0, "dcx2": 89.0, "o15": 29.1, "o25": 8.4, "o35": 1.9, "u25": 91.6, "btts": 16.4, "no_btts": 83.6, "cant_media": 8.4, "o85": 47.0, "o95": 34.1, "o105": 23.1, "u95": 65.9, "placares": [{"p": "0x0", "v": 27.3}, {"p": "0x1", "v": 27.3}, {"p": "0x2", "v": 13.6}, {"p": "1x0", "v": 8.2}, {"p": "1x1", "v": 8.2}, {"p": "0x3", "v": 4.5}]}, "verificar": {"home_stats": {"jogos_total": 5, "jogos_casa": 2, "media_gols_marc": 0.0, "media_gols_sofr": 1.0, "escanteios": 1.2, "clean_sheets": 4, "sem_marcar": 4, "forma": "DDLDW"}, "away_stats": {"jogos_total": 5, "jogos_fora": 2, "media_gols_marc": 1.0, "media_gols_sofr": 1.0, "escanteios": 7.2, "clean_sheets": 1, "sem_marcar": 1, "forma": "WWLLD"}, "poisson": {"lam_c": 0.3, "lam_f": 1.0, "calc_c": "0.0 × 1.0 × 1.1", "calc_f": "1.0 × 1.0"}}}], "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League": [{"data": "Hoje", "data_iso": "2026-04-21", "horario": "16:00", "status": "NS", "home": {"id": 51, "nome": "Brighton", "logo": "https://media.api-sports.io/football/teams/51.png"}, "away": {"id": 49, "nome": "Chelsea", "logo": "https://media.api-sports.io/football/teams/49.png"}, "probs": {"lam_c": 2.17, "lam_f": 1.99, "vc": 43.0, "emp": 20.4, "vf": 36.6, "dc1x": 63.4, "dcx2": 57.0, "o15": 85.2, "o25": 57.1, "o35": 29.1, "u25": 42.9, "btts": 75.5, "no_btts": 24.5, "cant_media": 11.3, "o85": 79.6, "o95": 69.5, "o105": 57.9, "u95": 30.5, "placares": [{"p": "2x1", "v": 7.3}, {"p": "2x2", "v": 7.3}, {"p": "1x1", "v": 6.7}, {"p": "1x2", "v": 6.7}, {"p": "3x1", "v": 5.3}, {"p": "3x2", "v": 5.3}]}, "verificar": {"home_stats": {"jogos_total": 33, "jogos_casa": 16, "media_gols_marc": 1.5, "media_gols_sofr": 1.06, "escanteios": 3.7, "clean_sheets": 8, "sem_marcar": 7, "forma": "LWWWD"}, "away_stats": {"jogos_total": 33, "jogos_fora": 16, "media_gols_marc": 1.88, "media_gols_sofr": 1.31, "escanteios": 7.7, "clean_sheets": 9, "sem_marcar": 6, "forma": "WLLLL"}, "poisson": {"lam_c": 2.17, "lam_f": 1.99, "calc_c": "1.5 × 1.31 × 1.1", "calc_f": "1.88 × 1.06"}}}, {"data": "Amanhã", "data_iso": "2026-04-22", "horario": "16:00", "status": "NS", "home": {"id": 35, "nome": "Bournemouth", "logo": "https://media.api-sports.io/football/teams/35.png"}, "away": {"id": 63, "nome": "Leeds", "logo": "https://media.api-sports.io/football/teams/63.png"}, "probs": {"lam_c": 2.87, "lam_f": 1.13, "vc": 72.4, "emp": 15.2, "vf": 12.5, "dc1x": 87.5, "dcx2": 27.6, "o15": 84.8, "o25": 59.4, "o35": 34.2, "u25": 40.6, "btts": 62.0, "no_btts": 38.0, "cant_media": 10.2, "o85": 68.6, "o95": 56.3, "o105": 43.8, "u95": 43.7, "placares": [{"p": "2x1", "v": 8.5}, {"p": "3x1", "v": 8.2}, {"p": "2x0", "v": 7.6}, {"p": "3x0", "v": 7.2}, {"p": "1x1", "v": 6.0}, {"p": "4x1", "v": 5.8}]}, "verificar": {"home_stats": {"jogos_total": 33, "jogos_casa": 16, "media_gols_marc": 1.44, "media_gols_sofr": 1.06, "escanteios": 4.8, "clean_sheets": 9, "sem_marcar": 7, "forma": "DDDWW"}, "away_stats": {"jogos_total": 33, "jogos_fora": 16, "media_gols_marc": 1.06, "media_gols_sofr": 1.81, "escanteios": 5.3, "clean_sheets": 7, "sem_marcar": 11, "forma": "LDDWW"}, "poisson": {"lam_c": 2.87, "lam_f": 1.13, "calc_c": "1.44 × 1.81 × 1.1", "calc_f": "1.06 × 1.06"}}}, {"data": "Amanhã", "data_iso": "2026-04-22", "horario": "16:00", "status": "NS", "home": {"id": 44, "nome": "Burnley", "logo": "https://media.api-sports.io/football/teams/44.png"}, "away": {"id": 50, "nome": "Manchester City", "logo": "https://media.api-sports.io/football/teams/50.png"}, "probs": {"lam_c": 1.1, "lam_f": 2.64, "vc": 13.8, "emp": 16.5, "vf": 69.7, "dc1x": 30.3, "dcx2": 86.2, "o15": 81.8, "o25": 54.1, "o35": 29.1, "u25": 45.9, "btts": 60.6, "no_btts": 39.4, "cant_media": 13.2, "o85": 90.8, "o95": 84.5, "o105": 76.2, "u95": 15.5, "placares": [{"p": "1x2", "v": 9.1}, {"p": "0x2", "v": 8.3}, {"p": "1x3", "v": 8.0}, {"p": "0x3", "v": 7.3}, {"p": "1x1", "v": 6.9}, {"p": "0x1", "v": 6.3}]}, "verificar": {"home_stats": {"jogos_total": 33, "jogos_casa": 16, "media_gols_marc": 0.94, "media_gols_sofr": 1.56, "escanteios": 5.0, "clean_sheets": 4, "sem_marcar": 12, "forma": "LDLLL"}, "away_stats": {"jogos_total": 32, "jogos_fora": 16, "media_gols_marc": 1.69, "media_gols_sofr": 1.06, "escanteios": 8.2, "clean_sheets": 13, "sem_marcar": 4, "forma": "WDDWW"}, "poisson": {"lam_c": 1.1, "lam_f": 2.64, "calc_c": "0.94 × 1.06 × 1.1", "calc_f": "1.69 × 1.56"}}}], "🇪🇸 La Liga": [{"data": "Hoje", "data_iso": "2026-04-21", "horario": "14:00", "status": "NS", "home": {"id": 531, "nome": "Athletic Club", "logo": "https://media.api-sports.io/football/teams/531.png"}, "away": {"id": 727, "nome": "Osasuna", "logo": "https://media.api-sports.io/football/teams/727.png"}, "probs": {"lam_c": 1.8, "lam_f": 0.82, "vc": 60.7, "emp": 22.7, "vf": 16.6, "dc1x": 83.4, "dcx2": 39.3, "o15": 63.0, "o25": 30.7, "o35": 11.8, "u25": 69.3, "btts": 46.5, "no_btts": 53.5, "cant_media": 11.5, "o85": 80.9, "o95": 71.1, "o105": 59.8, "u95": 28.9, "placares": [{"p": "1x0", "v": 13.1}, {"p": "2x0", "v": 11.8}, {"p": "1x1", "v": 10.7}, {"p": "2x1", "v": 9.7}, {"p": "0x0", "v": 7.3}, {"p": "3x0", "v": 7.1}]}, "verificar": {"home_stats": {"jogos_total": 31, "jogos_casa": 16, "media_gols_marc": 1.25, "media_gols_sofr": 1.19, "escanteios": 6.5, "clean_sheets": 5, "sem_marcar": 11, "forma": "LLWLL"}, "away_stats": {"jogos_total": 31, "jogos_fora": 16, "media_gols_marc": 0.69, "media_gols_sofr": 1.31, "escanteios": 5.0, "clean_sheets": 7, "sem_marcar": 10, "forma": "DLWDD"}, "poisson": {"lam_c": 1.8, "lam_f": 0.82, "calc_c": "1.25 × 1.31 × 1.1", "calc_f": "0.69 × 1.19"}}}, {"data": "Hoje", "data_iso": "2026-04-21", "horario": "14:00", "status": "NS", "home": {"id": 798, "nome": "Mallorca", "logo": "https://media.api-sports.io/football/teams/798.png"}, "away": {"id": 532, "nome": "Valencia", "logo": "https://media.api-sports.io/football/teams/532.png"}, "probs": {"lam_c": 3.13, "lam_f": 0.96, "vc": 78.9, "emp": 12.6, "vf": 8.5, "dc1x": 91.5, "dcx2": 21.1, "o15": 86.5, "o25": 63.4, "o35": 39.2, "u25": 36.6, "btts": 56.7, "no_btts": 43.3, "cant_media": 10.3, "o85": 70.3, "o95": 58.3, "o105": 45.9, "u95": 41.7, "placares": [{"p": "3x0", "v": 8.5}, {"p": "2x0", "v": 8.2}, {"p": "3x1", "v": 8.2}, {"p": "2x1", "v": 7.9}, {"p": "4x0", "v": 6.7}, {"p": "4x1", "v": 6.4}]}, "verificar": {"home_stats": {"jogos_total": 31, "jogos_casa": 16, "media_gols_marc": 1.62, "media_gols_sofr": 1.19, "escanteios": 3.7, "clean_sheets": 4, "sem_marcar": 8, "forma": "DWLWW"}, "away_stats": {"jogos_total": 31, "jogos_fora": 16, "media_gols_marc": 0.81, "media_gols_sofr": 1.75, "escanteios": 6.7, "clean_sheets": 8, "sem_marcar": 8, "forma": "WLWLL"}, "poisson": {"lam_c": 3.13, "lam_f": 0.96, "calc_c": "1.62 × 1.75 × 1.1", "calc_f": "0.81 × 1.19"}}}, {"data": "Hoje", "data_iso": "2026-04-21", "horario": "16:30", "status": "NS", "home": {"id": 541, "nome": "Real Madrid", "logo": "https://media.api-sports.io/football/teams/541.png"}, "away": {"id": 542, "nome": "Alaves", "logo": "https://media.api-sports.io/football/teams/542.png"}, "probs": {"lam_c": 4.45, "lam_f": 0.81, "vc": 91.2, "emp": 5.9, "vf": 2.9, "dc1x": 97.1, "dcx2": 8.8, "o15": 94.9, "o25": 83.0, "o35": 65.3, "u25": 17.0, "btts": 45.9, "no_btts": 54.1, "cant_media": 10.8, "o85": 75.3, "o95": 64.1, "o105": 52.0, "u95": 35.9, "placares": [{"p": "4x0", "v": 8.5}, {"p": "3x0", "v": 7.6}, {"p": "5x0", "v": 7.5}, {"p": "4x1", "v": 6.9}, {"p": "3x1", "v": 6.2}, {"p": "5x1", "v": 6.1}]}, "verificar": {"home_stats": {"jogos_total": 31, "jogos_casa": 16, "media_gols_marc": 2.31, "media_gols_sofr": 0.81, "escanteios": 6.5, "clean_sheets": 11, "sem_marcar": 3, "forma": "WWWLD"}, "away_stats": {"jogos_total": 31, "jogos_fora": 16, "media_gols_marc": 1.0, "media_gols_sofr": 1.75, "escanteios": 4.3, "clean_sheets": 3, "sem_marcar": 10, "forma": "LDWDD"}, "poisson": {"lam_c": 4.45, "lam_f": 0.81, "calc_c": "2.31 × 1.75 × 1.1", "calc_f": "1.0 × 0.81"}}}, {"data": "Hoje", "data_iso": "2026-04-21", "horario": "16:30", "status": "NS", "home": {"id": 547, "nome": "Girona", "logo": "https://media.api-sports.io/football/teams/547.png"}, "away": {"id": 543, "nome": "Real Betis", "logo": "https://media.api-sports.io/football/teams/543.png"}, "probs": {"lam_c": 1.71, "lam_f": 1.66, "vc": 39.7, "emp": 22.8, "vf": 37.5, "dc1x": 62.5, "dcx2": 60.3, "o15": 75.3, "o25": 42.2, "o35": 17.5, "u25": 57.8, "btts": 66.1, "no_btts": 33.9, "cant_media": 8.7, "o85": 50.0, "o95": 36.9, "o105": 25.5, "u95": 63.1, "placares": [{"p": "1x1", "v": 9.7}, {"p": "2x1", "v": 8.3}, {"p": "1x2", "v": 8.1}, {"p": "2x2", "v": 6.9}, {"p": "1x0", "v": 5.9}, {"p": "0x1", "v": 5.7}]}, "verificar": {"home_stats": {"jogos_total": 31, "jogos_casa": 15, "media_gols_marc": 1.13, "media_gols_sofr": 1.4, "escanteios": 4.2, "clean_sheets": 6, "sem_marcar": 8, "forma": "DWLWD"}, "away_stats": {"jogos_total": 31, "jogos_fora": 16, "media_gols_marc": 1.19, "media_gols_sofr": 1.38, "escanteios": 4.5, "clean_sheets": 9, "sem_marcar": 4, "forma": "LDLDD"}, "poisson": {"lam_c": 1.71, "lam_f": 1.66, "calc_c": "1.13 × 1.38 × 1.1", "calc_f": "1.19 × 1.4"}}}, {"data": "Amanhã", "data_iso": "2026-04-22", "horario": "14:00", "status": "NS", "home": {"id": 797, "nome": "Elche", "logo": "https://media.api-sports.io/football/teams/797.png"}, "away": {"id": 530, "nome": "Atletico Madrid", "logo": "https://media.api-sports.io/football/teams/530.png"}, "probs": {"lam_c": 2.06, "lam_f": 1.07, "vc": 60.1, "emp": 20.9, "vf": 19.0, "dc1x": 81.0, "dcx2": 39.9, "o15": 72.3, "o25": 40.2, "o35": 17.4, "u25": 59.8, "btts": 56.9, "no_btts": 43.1, "cant_media": 8.8, "o85": 52.2, "o95": 39.1, "o105": 27.4, "u95": 60.9, "placares": [{"p": "2x1", "v": 9.9}, {"p": "1x1", "v": 9.6}, {"p": "2x0", "v": 9.3}, {"p": "1x0", "v": 9.0}, {"p": "3x1", "v": 6.8}, {"p": "3x0", "v": 6.4}]}, "verificar": {"home_stats": {"jogos_total": 31, "jogos_casa": 16, "media_gols_marc": 1.56, "media_gols_sofr": 1.0, "escanteios": 4.0, "clean_sheets": 7, "sem_marcar": 5, "forma": "LLWLW"}, "away_stats": {"jogos_total": 31, "jogos_fora": 15, "media_gols_marc": 1.07, "media_gols_sofr": 1.2, "escanteios": 4.8, "clean_sheets": 12, "sem_marcar": 4, "forma": "WWLLL"}, "poisson": {"lam_c": 2.06, "lam_f": 1.07, "calc_c": "1.56 × 1.2 × 1.1", "calc_f": "1.07 × 1.0"}}}, {"data": "Amanhã", "data_iso": "2026-04-22", "horario": "15:00", "status": "NS", "home": {"id": 548, "nome": "Real Sociedad", "logo": "https://media.api-sports.io/football/teams/548.png"}, "away": {"id": 546, "nome": "Getafe", "logo": "https://media.api-sports.io/football/teams/546.png"}, "probs": {"lam_c": 2.89, "lam_f": 1.22, "vc": 70.9, "emp": 15.5, "vf": 13.7, "dc1x": 86.3, "dcx2": 29.1, "o15": 85.8, "o25": 60.7, "o35": 35.1, "u25": 39.3, "btts": 64.5, "no_btts": 35.5, "cant_media": 9.8, "o85": 64.8, "o95": 52.1, "o105": 39.6, "u95": 47.9, "placares": [{"p": "2x1", "v": 8.4}, {"p": "3x1", "v": 8.1}, {"p": "2x0", "v": 6.9}, {"p": "3x0", "v": 6.6}, {"p": "1x1", "v": 5.8}, {"p": "4x1", "v": 5.8}]}, "verificar": {"home_stats": {"jogos_total": 31, "jogos_casa": 16, "media_gols_marc": 2.0, "media_gols_sofr": 1.5, "escanteios": 6.0, "clean_sheets": 3, "sem_marcar": 3, "forma": "LWLWD"}, "away_stats": {"jogos_total": 31, "jogos_fora": 16, "media_gols_marc": 0.81, "media_gols_sofr": 1.31, "escanteios": 3.8, "clean_sheets": 9, "sem_marcar": 13, "forma": "WLWWL"}, "poisson": {"lam_c": 2.89, "lam_f": 1.22, "calc_c": "2.0 × 1.31 × 1.1", "calc_f": "0.81 × 1.5"}}}, {"data": "Amanhã", "data_iso": "2026-04-22", "horario": "16:30", "status": "NS", "home": {"id": 529, "nome": "Barcelona", "logo": "https://media.api-sports.io/football/teams/529.png"}, "away": {"id": 538, "nome": "Celta Vigo", "logo": "https://media.api-sports.io/football/teams/538.png"}, "probs": {"lam_c": 3.74, "lam_f": 0.79, "vc": 87.5, "emp": 8.2, "vf": 4.3, "dc1x": 95.7, "dcx2": 12.5, "o15": 90.8, "o25": 73.4, "o35": 51.8, "u25": 26.6, "btts": 48.6, "no_btts": 51.4, "cant_media": 8.5, "o85": 47.7, "o95": 34.7, "o105": 23.7, "u95": 65.3, "placares": [{"p": "3x0", "v": 9.4}, {"p": "4x0", "v": 8.8}, {"p": "2x0", "v": 7.6}, {"p": "3x1", "v": 7.4}, {"p": "4x1", "v": 6.9}, {"p": "5x0", "v": 6.6}]}, "verificar": {"home_stats": {"jogos_total": 31, "jogos_casa": 16, "media_gols_marc": 3.19, "media_gols_sofr": 0.56, "escanteios": 5.3, "clean_sheets": 12, "sem_marcar": 0, "forma": "WWWWW"}, "away_stats": {"jogos_total": 31, "jogos_fora": 15, "media_gols_marc": 1.4, "media_gols_sofr": 1.07, "escanteios": 3.2, "clean_sheets": 8, "sem_marcar": 5, "forma": "LDLWL"}, "poisson": {"lam_c": 3.74, "lam_f": 0.79, "calc_c": "3.19 × 1.07 × 1.1", "calc_f": "1.4 × 0.56"}}}, {"data": "23/04", "data_iso": "2026-04-23", "horario": "14:00", "status": "NS", "home": {"id": 539, "nome": "Levante", "logo": "https://media.api-sports.io/football/teams/539.png"}, "away": {"id": 536, "nome": "Sevilla", "logo": "https://media.api-sports.io/football/teams/536.png"}, "probs": {"lam_c": 2.44, "lam_f": 1.95, "vc": 48.9, "emp": 19.5, "vf": 31.6, "dc1x": 68.4, "dcx2": 51.1, "o15": 87.4, "o25": 61.4, "o35": 33.3, "u25": 38.6, "btts": 76.9, "no_btts": 23.1, "cant_media": 10.5, "o85": 72.1, "o95": 60.3, "o105": 47.9, "u95": 39.7, "placares": [{"p": "2x1", "v": 7.2}, {"p": "2x2", "v": 7.0}, {"p": "1x1", "v": 5.9}, {"p": "3x1", "v": 5.9}, {"p": "1x2", "v": 5.8}, {"p": "3x2", "v": 5.7}]}, "verificar": {"home_stats": {"jogos_total": 31, "jogos_casa": 16, "media_gols_marc": 1.19, "media_gols_sofr": 1.62, "escanteios": 5.7, "clean_sheets": 6, "sem_marcar": 11, "forma": "DDWLW"}, "away_stats": {"jogos_total": 31, "jogos_fora": 15, "media_gols_marc": 1.2, "media_gols_sofr": 1.87, "escanteios": 4.8, "clean_sheets": 5, "sem_marcar": 7, "forma": "DLLLW"}, "poisson": {"lam_c": 2.44, "lam_f": 1.95, "calc_c": "1.19 × 1.87 × 1.1", "calc_f": "1.2 × 1.62"}}}, {"data": "23/04", "data_iso": "2026-04-23", "horario": "15:00", "status": "NS", "home": {"id": 728, "nome": "Rayo Vallecano", "logo": "https://media.api-sports.io/football/teams/728.png"}, "away": {"id": 540, "nome": "Espanyol", "logo": "https://media.api-sports.io/football/teams/540.png"}, "probs": {"lam_c": 2.1, "lam_f": 0.87, "vc": 65.6, "emp": 19.8, "vf": 14.6, "dc1x": 85.4, "dcx2": 34.4, "o15": 70.3, "o25": 38.9, "o35": 17.2, "u25": 61.1, "btts": 50.7, "no_btts": 49.3, "cant_media": 13.2, "o85": 90.8, "o95": 84.5, "o105": 76.2, "u95": 15.5, "placares": [{"p": "2x0", "v": 11.3}, {"p": "1x0", "v": 10.7}, {"p": "2x1", "v": 9.8}, {"p": "1x1", "v": 9.4}, {"p": "3x0", "v": 7.9}, {"p": "3x1", "v": 6.9}]}, "verificar": {"home_stats": {"jogos_total": 31, "jogos_casa": 15, "media_gols_marc": 1.13, "media_gols_sofr": 0.73, "escanteios": 7.3, "clean_sheets": 9, "sem_marcar": 12, "forma": "DDLWL"}, "away_stats": {"jogos_total": 31, "jogos_fora": 16, "media_gols_marc": 1.19, "media_gols_sofr": 1.69, "escanteios": 5.8, "clean_sheets": 8, "sem_marcar": 6, "forma": "DLLDL"}, "poisson": {"lam_c": 2.1, "lam_f": 0.87, "calc_c": "1.13 × 1.69 × 1.1", "calc_f": "1.19 × 0.73"}}}, {"data": "23/04", "data_iso": "2026-04-23", "horario": "16:30", "status": "NS", "home": {"id": 718, "nome": "Oviedo", "logo": "https://media.api-sports.io/football/teams/718.png"}, "away": {"id": 533, "nome": "Villarreal", "logo": "https://media.api-sports.io/football/teams/533.png"}, "probs": {"lam_c": 0.74, "lam_f": 1.28, "vc": 21.4, "emp": 29.1, "vf": 49.4, "dc1x": 50.6, "dcx2": 78.6, "o15": 47.4, "o25": 17.3, "o35": 4.8, "u25": 82.7, "btts": 37.7, "no_btts": 62.3, "cant_media": 5.3, "o85": 9.2, "o95": 4.6, "o105": 2.1, "u95": 95.4, "placares": [{"p": "0x1", "v": 17.0}, {"p": "0x0", "v": 13.2}, {"p": "1x1", "v": 12.5}, {"p": "0x2", "v": 10.9}, {"p": "1x0", "v": 9.8}, {"p": "1x2", "v": 8.1}]}, "verificar": {"home_stats": {"jogos_total": 31, "jogos_casa": 15, "media_gols_marc": 0.47, "media_gols_sofr": 0.93, "escanteios": 2.2, "clean_sheets": 9, "sem_marcar": 16, "forma": "DWLWW"}, "away_stats": {"jogos_total": 31, "jogos_fora": 16, "media_gols_marc": 1.38, "media_gols_sofr": 1.44, "escanteios": 3.2, "clean_sheets": 8, "sem_marcar": 5, "forma": "WDWLW"}, "poisson": {"lam_c": 0.74, "lam_f": 1.28, "calc_c": "0.47 × 1.44 × 1.1", "calc_f": "1.38 × 0.93"}}}], "🇫🇷 Ligue 1": [{"data": "Amanhã", "data_iso": "2026-04-22", "horario": "14:00", "status": "NS", "home": {"id": 85, "nome": "Paris Saint Germain", "logo": "https://media.api-sports.io/football/teams/85.png"}, "away": {"id": 83, "nome": "Nantes", "logo": "https://media.api-sports.io/football/teams/83.png"}, "probs": {"lam_c": 3.73, "lam_f": 0.51, "vc": 91.4, "emp": 6.3, "vf": 2.3, "dc1x": 97.7, "dcx2": 8.6, "o15": 89.7, "o25": 72.4, "o35": 51.3, "u25": 27.6, "btts": 35.6, "no_btts": 64.4, "cant_media": 10.0, "o85": 66.7, "o95": 54.2, "o105": 41.7, "u95": 45.8, "placares": [{"p": "3x0", "v": 12.5}, {"p": "4x0", "v": 11.6}, {"p": "2x0", "v": 10.0}, {"p": "5x0", "v": 8.7}, {"p": "3x1", "v": 6.4}, {"p": "4x1", "v": 5.9}]}, "verificar": {"home_stats": {"jogos_total": 28, "jogos_casa": 14, "media_gols_marc": 2.5, "media_gols_sofr": 0.71, "escanteios": 6.2, "clean_sheets": 14, "sem_marcar": 2, "forma": "WLWWL"}, "away_stats": {"jogos_total": 29, "jogos_fora": 14, "media_gols_marc": 0.71, "media_gols_sofr": 1.36, "escanteios": 3.8, "clean_sheets": 6, "sem_marcar": 12, "forma": "LLDDD"}, "poisson": {"lam_c": 3.73, "lam_f": 0.51, "calc_c": "2.5 × 1.36 × 1.1", "calc_f": "0.71 × 0.71"}}}]}, "apostas_por_liga": {"🇧🇷 Brasileirão Série B": [{"mercado": "Under 2.5 gols", "prob": 91.6, "cod": "U2.5", "forte": true, "home": "Cuiaba", "away": "Botafogo SP", "horario": "21:30", "data": "23/04", "home_logo": "https://media.api-sports.io/football/teams/1193.png", "away_logo": "https://media.api-sports.io/football/teams/2618.png"}, {"mercado": "Dupla Chance X2", "prob": 89.0, "cod": "X2", "forte": true, "home": "Cuiaba", "away": "Botafogo SP", "horario": "21:30", "data": "23/04", "home_logo": "https://media.api-sports.io/football/teams/1193.png", "away_logo": "https://media.api-sports.io/football/teams/2618.png"}, {"mercado": "BTTS — Não", "prob": 83.6, "cod": "BTTS-N", "forte": true, "home": "Cuiaba", "away": "Botafogo SP", "horario": "21:30", "data": "23/04", "home_logo": "https://media.api-sports.io/football/teams/1193.png", "away_logo": "https://media.api-sports.io/football/teams/2618.png"}, {"mercado": "Under 9.5 escanteios", "prob": 65.9, "cod": "U9.5C", "forte": false, "home": "Cuiaba", "away": "Botafogo SP", "horario": "21:30", "data": "23/04", "home_logo": "https://media.api-sports.io/football/teams/1193.png", "away_logo": "https://media.api-sports.io/football/teams/2618.png"}], "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League": [{"mercado": "Over 8.5 escanteios", "prob": 90.8, "cod": "O8.5C", "forte": true, "home": "Burnley", "away": "Manchester City", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/44.png", "away_logo": "https://media.api-sports.io/football/teams/50.png"}, {"mercado": "Dupla Chance 1X", "prob": 87.5, "cod": "1X", "forte": true, "home": "Bournemouth", "away": "Leeds", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/35.png", "away_logo": "https://media.api-sports.io/football/teams/63.png"}, {"mercado": "Dupla Chance X2", "prob": 86.2, "cod": "X2", "forte": true, "home": "Burnley", "away": "Manchester City", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/44.png", "away_logo": "https://media.api-sports.io/football/teams/50.png"}, {"mercado": "Over 1.5 gols", "prob": 85.2, "cod": "O1.5", "forte": true, "home": "Brighton", "away": "Chelsea", "horario": "16:00", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/51.png", "away_logo": "https://media.api-sports.io/football/teams/49.png"}, {"mercado": "Over 1.5 gols", "prob": 84.8, "cod": "O1.5", "forte": true, "home": "Bournemouth", "away": "Leeds", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/35.png", "away_logo": "https://media.api-sports.io/football/teams/63.png"}, {"mercado": "Over 9.5 escanteios", "prob": 84.5, "cod": "O9.5C", "forte": true, "home": "Burnley", "away": "Manchester City", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/44.png", "away_logo": "https://media.api-sports.io/football/teams/50.png"}, {"mercado": "Over 1.5 gols", "prob": 81.8, "cod": "O1.5", "forte": true, "home": "Burnley", "away": "Manchester City", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/44.png", "away_logo": "https://media.api-sports.io/football/teams/50.png"}, {"mercado": "Over 8.5 escanteios", "prob": 79.6, "cod": "O8.5C", "forte": true, "home": "Brighton", "away": "Chelsea", "horario": "16:00", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/51.png", "away_logo": "https://media.api-sports.io/football/teams/49.png"}, {"mercado": "Over 10.5 escanteios", "prob": 76.2, "cod": "O10.5C", "forte": true, "home": "Burnley", "away": "Manchester City", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/44.png", "away_logo": "https://media.api-sports.io/football/teams/50.png"}, {"mercado": "BTTS — Ambos marcam", "prob": 75.5, "cod": "BTTS", "forte": true, "home": "Brighton", "away": "Chelsea", "horario": "16:00", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/51.png", "away_logo": "https://media.api-sports.io/football/teams/49.png"}, {"mercado": "Vitória Bournemouth", "prob": 72.4, "cod": "1", "forte": true, "home": "Bournemouth", "away": "Leeds", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/35.png", "away_logo": "https://media.api-sports.io/football/teams/63.png"}, {"mercado": "Vitória Manchester City", "prob": 69.7, "cod": "2", "forte": true, "home": "Burnley", "away": "Manchester City", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/44.png", "away_logo": "https://media.api-sports.io/football/teams/50.png"}, {"mercado": "Over 9.5 escanteios", "prob": 69.5, "cod": "O9.5C", "forte": true, "home": "Brighton", "away": "Chelsea", "horario": "16:00", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/51.png", "away_logo": "https://media.api-sports.io/football/teams/49.png"}, {"mercado": "Over 8.5 escanteios", "prob": 68.6, "cod": "O8.5C", "forte": true, "home": "Bournemouth", "away": "Leeds", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/35.png", "away_logo": "https://media.api-sports.io/football/teams/63.png"}, {"mercado": "Dupla Chance 1X", "prob": 63.4, "cod": "1X", "forte": false, "home": "Brighton", "away": "Chelsea", "horario": "16:00", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/51.png", "away_logo": "https://media.api-sports.io/football/teams/49.png"}, {"mercado": "BTTS — Ambos marcam", "prob": 62.0, "cod": "BTTS", "forte": false, "home": "Bournemouth", "away": "Leeds", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/35.png", "away_logo": "https://media.api-sports.io/football/teams/63.png"}, {"mercado": "BTTS — Ambos marcam", "prob": 60.6, "cod": "BTTS", "forte": false, "home": "Burnley", "away": "Manchester City", "horario": "16:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/44.png", "away_logo": "https://media.api-sports.io/football/teams/50.png"}], "🇪🇸 La Liga": [{"mercado": "Dupla Chance 1X", "prob": 97.1, "cod": "1X", "forte": true, "home": "Real Madrid", "away": "Alaves", "horario": "16:30", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/541.png", "away_logo": "https://media.api-sports.io/football/teams/542.png"}, {"mercado": "Dupla Chance 1X", "prob": 95.7, "cod": "1X", "forte": true, "home": "Barcelona", "away": "Celta Vigo", "horario": "16:30", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/529.png", "away_logo": "https://media.api-sports.io/football/teams/538.png"}, {"mercado": "Under 9.5 escanteios", "prob": 95.4, "cod": "U9.5C", "forte": true, "home": "Oviedo", "away": "Villarreal", "horario": "16:30", "data": "23/04", "home_logo": "https://media.api-sports.io/football/teams/718.png", "away_logo": "https://media.api-sports.io/football/teams/533.png"}, {"mercado": "Over 1.5 gols", "prob": 94.9, "cod": "O1.5", "forte": true, "home": "Real Madrid", "away": "Alaves", "horario": "16:30", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/541.png", "away_logo": "https://media.api-sports.io/football/teams/542.png"}, {"mercado": "Dupla Chance 1X", "prob": 91.5, "cod": "1X", "forte": true, "home": "Mallorca", "away": "Valencia", "horario": "14:00", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/798.png", "away_logo": "https://media.api-sports.io/football/teams/532.png"}, {"mercado": "Vitória Real Madrid", "prob": 91.2, "cod": "1", "forte": true, "home": "Real Madrid", "away": "Alaves", "horario": "16:30", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/541.png", "away_logo": "https://media.api-sports.io/football/teams/542.png"}, {"mercado": "Over 1.5 gols", "prob": 90.8, "cod": "O1.5", "forte": true, "home": "Barcelona", "away": "Celta Vigo", "horario": "16:30", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/529.png", "away_logo": "https://media.api-sports.io/football/teams/538.png"}, {"mercado": "Over 8.5 escanteios", "prob": 90.8, "cod": "O8.5C", "forte": true, "home": "Rayo Vallecano", "away": "Espanyol", "horario": "15:00", "data": "23/04", "home_logo": "https://media.api-sports.io/football/teams/728.png", "away_logo": "https://media.api-sports.io/football/teams/540.png"}, {"mercado": "Vitória Barcelona", "prob": 87.5, "cod": "1", "forte": true, "home": "Barcelona", "away": "Celta Vigo", "horario": "16:30", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/529.png", "away_logo": "https://media.api-sports.io/football/teams/538.png"}, {"mercado": "Over 1.5 gols", "prob": 87.4, "cod": "O1.5", "forte": true, "home": "Levante", "away": "Sevilla", "horario": "14:00", "data": "23/04", "home_logo": "https://media.api-sports.io/football/teams/539.png", "away_logo": "https://media.api-sports.io/football/teams/536.png"}, {"mercado": "Over 1.5 gols", "prob": 86.5, "cod": "O1.5", "forte": true, "home": "Mallorca", "away": "Valencia", "horario": "14:00", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/798.png", "away_logo": "https://media.api-sports.io/football/teams/532.png"}, {"mercado": "Dupla Chance 1X", "prob": 86.3, "cod": "1X", "forte": true, "home": "Real Sociedad", "away": "Getafe", "horario": "15:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/548.png", "away_logo": "https://media.api-sports.io/football/teams/546.png"}, {"mercado": "Over 1.5 gols", "prob": 85.8, "cod": "O1.5", "forte": true, "home": "Real Sociedad", "away": "Getafe", "horario": "15:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/548.png", "away_logo": "https://media.api-sports.io/football/teams/546.png"}, {"mercado": "Dupla Chance 1X", "prob": 85.4, "cod": "1X", "forte": true, "home": "Rayo Vallecano", "away": "Espanyol", "horario": "15:00", "data": "23/04", "home_logo": "https://media.api-sports.io/football/teams/728.png", "away_logo": "https://media.api-sports.io/football/teams/540.png"}, {"mercado": "Over 9.5 escanteios", "prob": 84.5, "cod": "O9.5C", "forte": true, "home": "Rayo Vallecano", "away": "Espanyol", "horario": "15:00", "data": "23/04", "home_logo": "https://media.api-sports.io/football/teams/728.png", "away_logo": "https://media.api-sports.io/football/teams/540.png"}, {"mercado": "Dupla Chance 1X", "prob": 83.4, "cod": "1X", "forte": true, "home": "Athletic Club", "away": "Osasuna", "horario": "14:00", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/531.png", "away_logo": "https://media.api-sports.io/football/teams/727.png"}, {"mercado": "Over 2.5 gols", "prob": 83.0, "cod": "O2.5", "forte": true, "home": "Real Madrid", "away": "Alaves", "horario": "16:30", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/541.png", "away_logo": "https://media.api-sports.io/football/teams/542.png"}, {"mercado": "Under 2.5 gols", "prob": 82.7, "cod": "U2.5", "forte": true, "home": "Oviedo", "away": "Villarreal", "horario": "16:30", "data": "23/04", "home_logo": "https://media.api-sports.io/football/teams/718.png", "away_logo": "https://media.api-sports.io/football/teams/533.png"}, {"mercado": "Dupla Chance 1X", "prob": 81.0, "cod": "1X", "forte": true, "home": "Elche", "away": "Atletico Madrid", "horario": "14:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/797.png", "away_logo": "https://media.api-sports.io/football/teams/530.png"}, {"mercado": "Over 8.5 escanteios", "prob": 80.9, "cod": "O8.5C", "forte": true, "home": "Athletic Club", "away": "Osasuna", "horario": "14:00", "data": "Hoje", "home_logo": "https://media.api-sports.io/football/teams/531.png", "away_logo": "https://media.api-sports.io/football/teams/727.png"}], "🇫🇷 Ligue 1": [{"mercado": "Dupla Chance 1X", "prob": 97.7, "cod": "1X", "forte": true, "home": "Paris Saint Germain", "away": "Nantes", "horario": "14:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/85.png", "away_logo": "https://media.api-sports.io/football/teams/83.png"}, {"mercado": "Vitória Paris Saint Germain", "prob": 91.4, "cod": "1", "forte": true, "home": "Paris Saint Germain", "away": "Nantes", "horario": "14:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/85.png", "away_logo": "https://media.api-sports.io/football/teams/83.png"}, {"mercado": "Over 1.5 gols", "prob": 89.7, "cod": "O1.5", "forte": true, "home": "Paris Saint Germain", "away": "Nantes", "horario": "14:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/85.png", "away_logo": "https://media.api-sports.io/football/teams/83.png"}, {"mercado": "Over 2.5 gols", "prob": 72.4, "cod": "O2.5", "forte": true, "home": "Paris Saint Germain", "away": "Nantes", "horario": "14:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/85.png", "away_logo": "https://media.api-sports.io/football/teams/83.png"}, {"mercado": "Over 8.5 escanteios", "prob": 66.7, "cod": "O8.5C", "forte": false, "home": "Paris Saint Germain", "away": "Nantes", "horario": "14:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/85.png", "away_logo": "https://media.api-sports.io/football/teams/83.png"}, {"mercado": "BTTS — Não", "prob": 64.4, "cod": "BTTS-N", "forte": false, "home": "Paris Saint Germain", "away": "Nantes", "horario": "14:00", "data": "Amanhã", "home_logo": "https://media.api-sports.io/football/teams/85.png", "away_logo": "https://media.api-sports.io/football/teams/83.png"}]}};</script>
+
+<header>
+  <div>
+    <div class="logo">⚽ Futebol · Apostas & Análise</div>
+    <div style="font-size:12px;color:#64748b;margin-top:3px">Poisson · Próximos 3 dias</div>
+  </div>
+  <div class="badge" id="badge-data"></div>
+</header>
+
+<div class="tabs">
+  <button class="tab ativo" onclick="mudarTab('apostas',this)">🎯 Apostas</button>
+  <button class="tab" onclick="mudarTab('analise',this)">📊 Análise</button>
+  <button class="tab" onclick="mudarTab('verificar',this)">🔍 Verificar Dados</button>
+</div>
+
+<main id="app"></main>
+
+<script>
+const D = window.DATA;
+document.getElementById('badge-data').textContent = '📅 ' + D.hoje + ' · ' + D.data;
+
+let tabAtual = 'apostas';
+let filtroData = 'Todos';
+
+function mudarTab(tab, el) {
+  tabAtual = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('ativo'));
+  if (el) el.classList.add('ativo');
+  render();
+}
+
+const cor  = v => v >= 68 ? 'verde' : v >= 60 ? 'amarelo' : 'vermelho';
+const barC = {'verde':'#34d399','amarelo':'#fbbf24','vermelho':'#f87171'};
+const oddImpl = p => (100 / p).toFixed(2);
+
+
+// ── APOSTAS ──────────────────────────────────────────────────────────────────
+function renderApostas() {
+  const ligas = D.apostas_por_liga;
+  if (!Object.keys(ligas).length)
+    return `<div class="vazio">📭 Nenhuma aposta encontrada nos próximos 3 dias.</div>`;
+
+  const labelsData = ['Todos', 'Hoje', 'Amanhã', ...D.datas.slice(2).map((_,i) =>
+    new Date(D.datas[i+2]+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}))];
+
+  const filtroHtml = `<div class="filtros">${labelsData.map(l =>
+    `<button class="filtro-btn ${filtroData===l?'ativo':''}" onclick="setFiltro('${l}')">${l}</button>`
+  ).join('')}</div>`;
+
+  const blocosHtml = Object.entries(ligas).map(([liga, apostas]) => {
+    const filtradas = filtroData === 'Todos' ? apostas
+      : apostas.filter(a => a.data === filtroData);
+    if (!filtradas.length) return '';
+
+    const cards = filtradas.map(a => `
+      <div class="aposta ${a.forte?'forte':'medio'}">
+        <div class="logos">
+          <img src="${a.home_logo}" alt="${a.home}">
+          <img src="${a.away_logo}" alt="${a.away}">
+        </div>
+        <div class="aposta-info">
+          <div class="aposta-partida">${a.home} × ${a.away}</div>
+          <div class="aposta-mercado">${a.mercado}</div>
+        </div>
+        <div class="aposta-meta">
+          <div class="aposta-data">${a.data} · ${a.horario} BRT</div>
+          <div style="text-align:center">
+            <div style="font-size:10px;color:#64748b;margin-bottom:3px">Chance de acerto</div>
+            <div class="prob-badge ${a.forte?'prob-forte':'prob-medio'}">${a.prob}%</div>
+            <div class="odd-impl">odd mín. ${oddImpl(a.prob)}</div>
+          </div>
+        </div>
+      </div>`).join('');
+
+    return `<div class="liga-bloco">
+      <div class="liga-header">
+        <span>${liga}</span>
+        <span class="conta-badge">${filtradas.length} apostas</span>
+      </div>
+      ${cards}
+    </div>`;
+  }).join('');
+
+  return filtroHtml + (blocosHtml || `<div class="vazio">📭 Nenhuma aposta para o filtro selecionado.</div>`);
+}
+
+function setFiltro(f) {
+  filtroData = f;
+  render();
+}
+
+// ── ANÁLISE ──────────────────────────────────────────────────────────────────
+function renderJogo(j) {
+  const p = j.probs;
+  const live = ['1H','2H','HT','ET','P'].includes(j.status);
+  const horarioBadge = live
+    ? `<span class="status-live">⬤ AO VIVO</span>`
+    : `<span class="horario">${j.horario} BRT</span>`;
+
+  let body = `<div class="sem-probs">⚠️ Estatísticas insuficientes para este jogo.</div>`;
+  if (p) {
+    const maxR = Math.max(p.vc, p.emp, p.vf);
+    body = `<div class="probs">
+      <div class="resultado">${[
+        {l:j.home.nome, v:p.vc,  c:cor(p.vc)},
+        {l:'Empate',    v:p.emp, c:cor(p.emp)},
+        {l:j.away.nome, v:p.vf,  c:cor(p.vf)},
+      ].map(r=>`<div class="res-item">
+        <div class="res-label" title="${r.l}">${r.l.split(' ')[0]}</div>
+        <div class="res-valor ${r.c}">${r.v}%</div>
+        <div class="res-bar"><div class="res-fill" style="width:${(r.v/maxR*100).toFixed(1)}%;background:${barC[r.c]}"></div></div>
+      </div>`).join('')}
+      </div>
+      <div class="ou-grid">${[
+        {l:'Over 1.5 gols', v:p.o15},
+        {l:'Over 2.5 gols', v:p.o25},
+        {l:'Over 3.5 gols', v:p.o35},
+        {l:'Under 2.5 gols',v:p.u25},
+        {l:'BTTS — Sim',    v:p.btts},
+        {l:'BTTS — Não',    v:p.no_btts},
+        {l:'Dupla 1X',      v:p.dc1x},
+        {l:'Dupla X2',      v:p.dcx2},
+        {l:'Over 9.5 cant.',v:p.o95},
+      ].map(o=>`<div class="ou-item">
+        <span class="ou-label">${o.l}</span>
+        <span class="ou-val ${cor(o.v)}">${o.v}%</span>
+      </div>`).join('')}
+      </div>
+      <div class="cant-row">
+        <span>Over 10.5 cant.: <strong class="${cor(p.o105)}">${p.o105}%</strong> · Under 9.5: <strong class="${cor(p.u95)}">${p.u95}%</strong></span>
+        <span>λ ${p.lam_c}×${p.lam_f} · cant. esp. <strong class="azul">${p.cant_media}</strong></span>
+      </div>
+      <div class="placares-row">${p.placares.map(x=>`
+        <div class="plac">
+          <span class="plac-score">${x.p}</span>
+          <span class="plac-pct">${x.v}%</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  return `<div class="card">
+    <div class="card-topo">
+      <div class="times">
+        <div class="time-bloco">
+          <img src="${j.home.logo}" alt="${j.home.nome}" loading="lazy">
+          <div class="time-nome">${j.home.nome}</div>
+        </div>
+        <span class="vs">VS</span>
+        <div class="time-bloco">
+          <img src="${j.away.logo}" alt="${j.away.nome}" loading="lazy">
+          <div class="time-nome">${j.away.nome}</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <span class="data-tag">${j.data}</span>
+        ${horarioBadge}
+      </div>
+    </div>
+    ${body}
+  </div>`;
+}
+
+function renderAnalise() {
+  if (!D.total_jogos)
+    return `<div class="vazio">📭 Nenhum jogo nos próximos 3 dias.</div>`;
+
+  const filtroLabels = ['Todos', 'Hoje', 'Amanhã'];
+  const filtroHtml = `<div class="filtros">${filtroLabels.map(l =>
+    `<button class="filtro-btn ${filtroData===l?'ativo':''}" onclick="setFiltro('${l}')">${l}</button>`
+  ).join('')}</div>`;
+
+  const blocosHtml = Object.entries(D.ligas).map(([liga, jogos]) => {
+    const filtrados = filtroData === 'Todos' ? jogos
+      : jogos.filter(j => j.data === filtroData);
+    if (!filtrados.length) return '';
+    return `<div class="liga-bloco">
+      <div class="liga-header"><span>${liga}</span><span class="conta-badge">${filtrados.length} jogos</span></div>
+      <div style="display:flex;flex-direction:column;gap:12px">${filtrados.map(renderJogo).join('')}</div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  return filtroHtml + (blocosHtml || `<div class="vazio">📭 Nenhum jogo para este filtro.</div>`);
+}
+
+// ── VERIFICAR ─────────────────────────────────────────────────────────────────
+function formaHtml(forma) {
+  if (!forma) return '<span style="color:#475569;font-size:11px">sem dados</span>';
+  return '<div class="forma-pills">' +
+    forma.split('').map(c =>
+      `<div class="pill pill-${c}" title="${c==='W'?'Vitória':c==='D'?'Empate':'Derrota'}">${c}</div>`
+    ).join('') + '</div>';
+}
+
+function renderVerificarJogo(j, liga) {
+  const v = j.verificar;
+  if (!v) return `<div class="ver-card">
+    <div class="ver-header">
+      <div class="ver-match">
+        <img src="${j.home.logo}"> ${j.home.nome} × ${j.away.nome} <img src="${j.away.logo}">
+      </div>
+      <span style="font-size:12px;color:#475569">${j.data} · ${j.horario} BRT</span>
+    </div>
+    <div style="padding:16px;font-size:13px;color:#475569;font-style:italic">⚠️ Dados insuficientes para verificação.</div>
+  </div>`;
+
+  const hs = v.home_stats, as_ = v.away_stats, po = v.poisson;
+  const pct = (n, t) => t ? `${n} (${Math.round(n/t*100)}%)` : n;
+
+  return `<div class="ver-card">
+    <div class="ver-header">
+      <div class="ver-match">
+        <img src="${j.home.logo}"> ${j.home.nome} × ${j.away.nome} <img src="${j.away.logo}">
+      </div>
+      <span style="font-size:12px;color:#475569">${j.data} · ${j.horario} BRT · ${liga}</span>
+    </div>
+    <div class="ver-body">
+      <div class="ver-col">
+        <div class="ver-col-titulo"><img src="${j.home.logo}"> ${j.home.nome} <span style="color:#38bdf8">(Casa)</span></div>
+        <div class="forma-pills">${formaHtml(hs.forma)}</div>
+        <div class="ver-row"><span class="ver-lbl">Jogos na temporada</span><span class="ver-val">${hs.jogos_total} (${hs.jogos_casa} em casa)</span></div>
+        <div class="ver-row"><span class="ver-lbl">Gols marcados/jogo (casa)</span><span class="ver-val verde">${hs.media_gols_marc}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Gols sofridos/jogo (casa)</span><span class="ver-val vermelho">${hs.media_gols_sofr}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Escanteios médios</span><span class="ver-val azul">${hs.escanteios}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Clean sheets</span><span class="ver-val">${pct(hs.clean_sheets, hs.jogos_total)}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Jogos sem marcar</span><span class="ver-val">${pct(hs.sem_marcar, hs.jogos_total)}</span></div>
+      </div>
+      <div class="ver-col">
+        <div class="ver-col-titulo"><img src="${j.away.logo}"> ${j.away.nome} <span style="color:#f87171">(Fora)</span></div>
+        <div class="forma-pills">${formaHtml(as_.forma)}</div>
+        <div class="ver-row"><span class="ver-lbl">Jogos na temporada</span><span class="ver-val">${as_.jogos_total} (${as_.jogos_fora} fora)</span></div>
+        <div class="ver-row"><span class="ver-lbl">Gols marcados/jogo (fora)</span><span class="ver-val verde">${as_.media_gols_marc}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Gols sofridos/jogo (fora)</span><span class="ver-val vermelho">${as_.media_gols_sofr}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Escanteios médios</span><span class="ver-val azul">${as_.escanteios}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Clean sheets</span><span class="ver-val">${pct(as_.clean_sheets, as_.jogos_total)}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Jogos sem marcar</span><span class="ver-val">${pct(as_.sem_marcar, as_.jogos_total)}</span></div>
+      </div>
+    </div>
+    <div class="ver-poisson">
+      <span>📐 <strong>Cálculo Poisson:</strong></span>
+      <span>λ ${j.home.nome} = <code>${po.calc_c}</code> = <strong>${po.lam_c} gols esperados</strong></span>
+      <span>λ ${j.away.nome} = <code>${po.calc_f}</code> = <strong>${po.lam_f} gols esperados</strong></span>
+      <span style="color:#475569;font-size:11px">Fórmula: gols marcados × gols sofridos adversário (× 1.1 fator casa para mandante)</span>
+    </div>
+  </div>`;
+}
+
+function renderVerificar() {
+  if (!D.total_jogos)
+    return `<div class="vazio">📭 Nenhum jogo para verificar.</div>`;
+
+  const filtroLabels = ['Todos', 'Hoje', 'Amanhã'];
+  const filtroHtml = `<div class="filtros">${filtroLabels.map(l =>
+    `<button class="filtro-btn ${filtroData===l?'ativo':''}" onclick="setFiltro('${l}')">${l}</button>`
+  ).join('')}</div>`;
+
+  const blocosHtml = Object.entries(D.ligas).map(([liga, jogos]) => {
+    const filtrados = filtroData === 'Todos' ? jogos : jogos.filter(j => j.data === filtroData);
+    if (!filtrados.length) return '';
+    return `<div class="liga-bloco">
+      <div class="liga-header"><span>${liga}</span><span class="conta-badge">${filtrados.length} jogos</span></div>
+      ${filtrados.map(j => renderVerificarJogo(j, liga)).join('')}
+    </div>`;
+  }).filter(Boolean).join('');
+
+  return filtroHtml + (blocosHtml || `<div class="vazio">📭 Nenhum jogo para este filtro.</div>`);
+}
+
+// ── Render principal ──────────────────────────────────────────────────────────
+function render() {
+  const html = tabAtual === 'apostas'   ? renderApostas()
+             : tabAtual === 'analise'   ? renderAnalise()
+             :                           renderVerificar();
+  document.getElementById('app').innerHTML = html;
+}
+
+render();
+</script>
+</body>
+</html>

@@ -9,3 +9,4 @@ backend/cache.db
 frontend/node_modules/
 frontend/dist/
 output/
+# docs/ é gerenciado pela Action, não ignorar

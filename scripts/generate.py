@@ -745,7 +745,7 @@ def main():
     print(f"\nTotal: {dados['total_jogos']} jogos · {total_apostas} apostas sugeridas")
 
     html = HTML_TEMPLATE.replace("__DATA__", json.dumps(dados, ensure_ascii=False, cls=NumpyEncoder))
-    out  = Path(__file__).parent.parent / "output" / "index.html"
+    out  = Path(__file__).parent.parent / "docs" / "index.html"
     out.parent.mkdir(exist_ok=True)
     out.write_text(html, encoding="utf-8")
     print(f"Gerado: {out}")
