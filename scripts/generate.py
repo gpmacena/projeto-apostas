@@ -4,7 +4,7 @@ Busca jogos dos próximos 3 dias, calcula probabilidades Poisson e gera
 index.html estático com apostas recomendadas + análise completa.
 """
 
-import os, sys, json, time
+import os, sys, json, time, itertools, math
 import requests
 import numpy as np
 from scipy.stats import poisson
@@ -198,8 +198,8 @@ def extrair_apostas(jogo: dict) -> list:
     candidatas = [
         {"mercado": f"Vitória {home}",    "prob": p["vc"],       "cod": "1"},
         {"mercado": f"Vitória {away}",    "prob": p["vf"],       "cod": "2"},
-        {"mercado": "Dupla Chance 1X",    "prob": p["dc1x"],     "cod": "1X"},
-        {"mercado": "Dupla Chance X2",    "prob": p["dcx2"],     "cod": "X2"},
+        {"mercado": f"Dupla Chance: {home} ou Empate", "prob": p["dc1x"], "cod": "1X"},
+        {"mercado": f"Dupla Chance: Empate ou {away}", "prob": p["dcx2"], "cod": "X2"},
         {"mercado": "Over 1.5 gols",      "prob": p["o15"],      "cod": "O1.5"},
         {"mercado": "Over 2.5 gols",      "prob": p["o25"],      "cod": "O2.5"},
         {"mercado": "Over 3.5 gols",      "prob": p["o35"],      "cod": "O3.5"},
@@ -314,6 +314,75 @@ def processar_liga(liga_id: int) -> list:
     return jogos
 
 
+def gerar_multiplas(apostas_por_liga: dict) -> list:
+    """
+    Combina apostas de jogos DIFERENTES (máx 1 por jogo em cada combo).
+    Usa bets de 65-88% para que combinações de 2-4 cheguem a odd 1.50-2.00.
+    """
+    candidatas = []
+    for liga, apostas in apostas_por_liga.items():
+        for a in apostas:
+            if 65 <= a["prob"] <= 88:
+                candidatas.append({**a, "liga": liga, "odd_impl": round(100 / a["prob"], 3)})
+
+    if len(candidatas) < 2:
+        return []
+
+    # Ordena por odd (maior = mais interessante para compor) e limita candidatas
+    candidatas.sort(key=lambda x: x["odd_impl"], reverse=True)
+    candidatas = candidatas[:25]
+
+    def to_sel(a):
+        return {
+            "mercado":   a["mercado"],
+            "home":      a["home"],
+            "away":      a["away"],
+            "home_logo": a["home_logo"],
+            "away_logo": a["away_logo"],
+            "prob":      a["prob"],
+            "odd":       round(a["odd_impl"], 2),
+            "data":      a["data"],
+            "horario":   a["horario"],
+            "liga":      a["liga"],
+        }
+
+    multiplas = []
+    for r in range(2, 5):   # 2, 3 ou 4 seleções
+        for combo in itertools.combinations(candidatas, r):
+            # Regra: máx 1 aposta por partida em cada combo
+            partidas = [(a["home"], a["away"]) for a in combo]
+            if len(set(partidas)) != len(partidas):
+                continue
+
+            odd_total = round(math.prod(a["odd_impl"] for a in combo), 2)
+            if not (1.50 <= odd_total <= 2.05):
+                continue
+
+            prob_total = round(math.prod(a["prob"] / 100 for a in combo) * 100, 1)
+            multiplas.append({
+                "n":          r,
+                "odd_total":  odd_total,
+                "prob_total": prob_total,
+                "selecoes":   [to_sel(a) for a in combo],
+            })
+
+    # Ordena: maior prob_total primeiro
+    multiplas.sort(key=lambda x: (-x["prob_total"], x["odd_total"]))
+
+    # Desduplicação: evita combos quase idênticos (mesmos jogos, mercado diferente)
+    vistos: set = set()
+    resultado = []
+    for m in multiplas:
+        chave = frozenset((s["home"], s["away"]) for s in m["selecoes"])
+        if chave not in vistos:
+            vistos.add(chave)
+            resultado.append(m)
+        if len(resultado) >= 12:
+            break
+
+    return resultado
+
+
 def gerar_dados() -> dict:
     ligas: dict = {}
     apostas_por_liga: dict = {}
@@ -332,9 +401,8 @@ def gerar_dados() -> dict:
         for j in jogos:
             todas_apostas.extend(extrair_apostas(j))
 
-        # Ordena por probabilidade e pega as melhores
         todas_apostas.sort(key=lambda x: x["prob"], reverse=True)
-        apostas_por_liga[nome] = todas_apostas[:20]   # até 20 por liga
+        apostas_por_liga[nome] = todas_apostas[:20]
 
     return {
         "data":             AGORA,
@@ -344,6 +412,7 @@ def gerar_dados() -> dict:
         "ligas":            ligas,
         "apostas_por_liga": apostas_por_liga,
         "odd_minima":       ODD_MINIMA,
+        "multiplas":        gerar_multiplas(apostas_por_liga),
     }
 
 
@@ -430,6 +499,28 @@ main{max-width:920px;margin:0 auto;padding:20px 16px;display:flex;flex-direction
 
 .verde{color:#34d399}.amarelo{color:#fbbf24}.vermelho{color:#f87171}.azul{color:#38bdf8}
 
+/* Múltiplas */
+.mult-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.mult-card{background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden}
+.mult-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#0f172a;border-bottom:1px solid #334155}
+.mult-n{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#64748b}
+.mult-odds{display:flex;align-items:center;gap:12px}
+.mult-odd-total{font-size:22px;font-weight:800;color:#f1f5f9}
+.mult-prob-total{font-size:12px;color:#64748b;text-align:right}
+.mult-selecoes{display:flex;flex-direction:column;gap:0}
+.mult-sel{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #0f172a}
+.mult-sel:last-child{border-bottom:none}
+.mult-sel-logos{display:flex;gap:3px;flex-shrink:0}
+.mult-sel-logos img{width:20px;height:20px;object-fit:contain}
+.mult-sel-info{flex:1;min-width:0}
+.mult-sel-partida{font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mult-sel-mercado{font-size:13px;font-weight:600;color:#f1f5f9}
+.mult-sel-odd{text-align:right;flex-shrink:0}
+.mult-sel-odd-val{font-size:14px;font-weight:700;color:#38bdf8}
+.mult-sel-prob{font-size:11px;color:#64748b}
+.mult-footer{padding:10px 14px;background:#0f172a;display:flex;align-items:center;justify-content:space-between;font-size:12px;border-top:1px solid #334155}
+.retorno{color:#34d399;font-weight:700}
+
 /* Verificar */
 .ver-card{background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden;margin-bottom:12px}
 .ver-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #334155;flex-wrap:wrap;gap:8px}
@@ -469,8 +560,9 @@ main{max-width:920px;margin:0 auto;padding:20px 16px;display:flex;flex-direction
 
 <div class="tabs">
   <button class="tab ativo" onclick="mudarTab('apostas',this)">🎯 Apostas</button>
+  <button class="tab" onclick="mudarTab('multiplas',this)">🎰 Múltiplas</button>
   <button class="tab" onclick="mudarTab('analise',this)">📊 Análise</button>
-  <button class="tab" onclick="mudarTab('verificar',this)">🔍 Verificar Dados</button>
+  <button class="tab" onclick="mudarTab('verificar',this)">🔍 Verificar</button>
 </div>
 
 <main id="app"></main>
@@ -498,8 +590,8 @@ const oddImpl = p => (100 / p).toFixed(2);
 const GLOSSARIO = [
   {cod:'1',    nome:'Vitória Casa',          desc:'O time mandante (da casa) vence no tempo normal.'},
   {cod:'2',    nome:'Vitória Fora',          desc:'O time visitante vence no tempo normal.'},
-  {cod:'1X',   nome:'Dupla Chance 1X',       desc:'Você ganha se o time da casa vencer OU empatar. Cobre 2 dos 3 resultados — mais seguro que apostar só na vitória.'},
-  {cod:'X2',   nome:'Dupla Chance X2',       desc:'Você ganha se o visitante vencer OU empatar. Boa proteção quando o visitante é forte mas pode empatar.'},
+  {cod:'1X',   nome:'Dupla Chance: Casa ou Empate', desc:'Você ganha se o time da CASA vencer OU empatar. O nome do time da casa aparece na aposta. Cobre 2 dos 3 resultados — mais seguro que apostar só na vitória.'},
+  {cod:'X2',   nome:'Dupla Chance: Empate ou Fora', desc:'Você ganha se o time VISITANTE vencer OU empatar. O nome do visitante aparece na aposta. Boa proteção quando o visitante é forte mas pode empatar.'},
   {cod:'O1.5', nome:'Over 1.5 gols',         desc:'O jogo termina com 2 ou mais gols no total. Muito frequente — odd costuma ser baixa.'},
   {cod:'O2.5', nome:'Over 2.5 gols',         desc:'3 ou mais gols no total. O mercado mais popular. Equilíbrio entre chance e odd.'},
   {cod:'O3.5', nome:'Over 3.5 gols',         desc:'4 ou mais gols no total. Menos provável, mas odd mais alta.'},
@@ -704,6 +796,64 @@ function renderAnalise() {
   return filtroHtml + (blocosHtml || `<div class="vazio">📭 Nenhum jogo para este filtro.</div>`);
 }
 
+// ── MÚLTIPLAS ─────────────────────────────────────────────────────────────────
+function renderMultiplas() {
+  const mults = D.multiplas || [];
+
+  const aviso = `
+    <div style="background:#1c1a05;border:1px solid #854d0e;border-radius:10px;padding:12px 16px;font-size:12px;color:#fbbf24;line-height:1.6">
+      <strong>⚠️ Como funciona uma múltipla:</strong> você combina várias apostas em um único bilhete.
+      A odd final é o <strong>produto</strong> das odds individuais — por isso cresce rápido.
+      Mas a <strong>probabilidade de acerto cai</strong> a cada seleção adicionada (todas precisam ganhar).
+      Use múltiplas de <strong>2 a 3 seleções</strong> com as de maior confiança.
+    </div>`;
+
+  if (!mults.length) return aviso + `<div class="vazio">📭 Apostas insuficientes para gerar múltiplas hoje.</div>`;
+
+  const cards = mults.map(m => {
+    const corOdd = m.odd_total >= 1.8 ? '#fbbf24' : '#34d399';
+    const corProb = m.prob_total >= 30 ? '#34d399' : m.prob_total >= 20 ? '#fbbf24' : '#f87171';
+    const sels = m.selecoes.map(s => `
+      <div class="mult-sel">
+        <div class="mult-sel-logos">
+          <img src="${s.home_logo}" alt="${s.home}">
+          <img src="${s.away_logo}" alt="${s.away}">
+        </div>
+        <div class="mult-sel-info">
+          <div class="mult-sel-partida">${s.home} × ${s.away} · ${s.data} ${s.horario}</div>
+          <div class="mult-sel-mercado">${s.mercado}</div>
+        </div>
+        <div class="mult-sel-odd">
+          <div class="mult-sel-odd-val">${s.odd}</div>
+          <div class="mult-sel-prob">${s.prob}%</div>
+        </div>
+      </div>`).join('');
+
+    return `<div class="mult-card">
+      <div class="mult-header">
+        <span class="mult-n">${m.n} seleções</span>
+        <div class="mult-odds">
+          <div>
+            <div style="font-size:10px;color:#64748b;text-align:right">Odd total</div>
+            <div class="mult-odd-total" style="color:${corOdd}">${m.odd_total}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#64748b">Prob. combinada</div>
+            <div style="font-size:16px;font-weight:700;color:${corProb}">${m.prob_total}%</div>
+          </div>
+        </div>
+      </div>
+      <div class="mult-selecoes">${sels}</div>
+      <div class="mult-footer">
+        <span style="color:#64748b">R$100 apostados</span>
+        <span>→ retorno: <span class="retorno">R$${(100 * m.odd_total).toFixed(0)}</span> (lucro: <span class="retorno">R$${(100 * m.odd_total - 100).toFixed(0)}</span>)</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  return aviso + `<div class="mult-grid">${cards}</div>`;
+}
+
 // ── VERIFICAR ─────────────────────────────────────────────────────────────────
 function formaHtml(forma) {
   if (!forma) return '<span style="color:#475569;font-size:11px">sem dados</span>';
@@ -790,6 +940,7 @@ function renderVerificar() {
 // ── Render principal ──────────────────────────────────────────────────────────
 function render() {
   const html = tabAtual === 'apostas'   ? renderApostas()
+             : tabAtual === 'multiplas' ? renderMultiplas()
              : tabAtual === 'analise'   ? renderAnalise()
              :                           renderVerificar();
   document.getElementById('app').innerHTML = html;
