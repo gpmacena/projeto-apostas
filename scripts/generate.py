@@ -314,62 +314,52 @@ def processar_liga(liga_id: int) -> list:
     return jogos
 
 
-def gerar_multiplas(apostas_por_liga: dict) -> list:
-    """
-    Combina apostas de jogos DIFERENTES (máx 1 por jogo em cada combo).
-    Usa bets de 65-88% para que combinações de 2-4 cheguem a odd 1.50-2.00.
-    """
-    candidatas = []
-    for liga, apostas in apostas_por_liga.items():
-        for a in apostas:
-            if 65 <= a["prob"] <= 88:
-                candidatas.append({**a, "liga": liga, "odd_impl": round(100 / a["prob"], 3)})
+def _to_sel(a: dict) -> dict:
+    return {
+        "mercado":   a["mercado"],
+        "home":      a["home"],
+        "away":      a["away"],
+        "home_logo": a["home_logo"],
+        "away_logo": a["away_logo"],
+        "prob":      a["prob"],
+        "odd":       round(a["odd_impl"], 2),
+        "data":      a["data"],
+        "horario":   a["horario"],
+        "liga":      a["liga"],
+    }
 
+
+def _gerar_multiplas_para(apostas: list) -> list:
+    """Gera múltiplas (odd 1.50-2.05) para uma lista de apostas de um mesmo dia."""
+    candidatas = [
+        {**a, "odd_impl": round(100 / a["prob"], 3)}
+        for a in apostas if 65 <= a["prob"] <= 88
+    ]
     if len(candidatas) < 2:
         return []
 
-    # Ordena por odd (maior = mais interessante para compor) e limita candidatas
     candidatas.sort(key=lambda x: x["odd_impl"], reverse=True)
     candidatas = candidatas[:25]
 
-    def to_sel(a):
-        return {
-            "mercado":   a["mercado"],
-            "home":      a["home"],
-            "away":      a["away"],
-            "home_logo": a["home_logo"],
-            "away_logo": a["away_logo"],
-            "prob":      a["prob"],
-            "odd":       round(a["odd_impl"], 2),
-            "data":      a["data"],
-            "horario":   a["horario"],
-            "liga":      a["liga"],
-        }
-
     multiplas = []
-    for r in range(2, 5):   # 2, 3 ou 4 seleções
+    for r in range(2, 5):
         for combo in itertools.combinations(candidatas, r):
-            # Regra: máx 1 aposta por partida em cada combo
             partidas = [(a["home"], a["away"]) for a in combo]
             if len(set(partidas)) != len(partidas):
                 continue
-
             odd_total = round(math.prod(a["odd_impl"] for a in combo), 2)
             if not (1.50 <= odd_total <= 2.05):
                 continue
-
             prob_total = round(math.prod(a["prob"] / 100 for a in combo) * 100, 1)
             multiplas.append({
                 "n":          r,
                 "odd_total":  odd_total,
                 "prob_total": prob_total,
-                "selecoes":   [to_sel(a) for a in combo],
+                "selecoes":   [_to_sel(a) for a in combo],
             })
 
-    # Ordena: maior prob_total primeiro
     multiplas.sort(key=lambda x: (-x["prob_total"], x["odd_total"]))
 
-    # Desduplicação: evita combos quase idênticos (mesmos jogos, mercado diferente)
     vistos: set = set()
     resultado = []
     for m in multiplas:
@@ -379,6 +369,30 @@ def gerar_multiplas(apostas_por_liga: dict) -> list:
             resultado.append(m)
         if len(resultado) >= 12:
             break
+    return resultado
+
+
+def gerar_multiplas(apostas_por_liga: dict) -> dict:
+    """
+    Retorna dict {label_data: [multiplas]} agrupado por dia.
+    Prioriza jogos do mesmo dia; datas sem bets suficientes são omitidas.
+    """
+    # Flatten com liga e odd_impl
+    todas = []
+    for liga, apostas in apostas_por_liga.items():
+        for a in apostas:
+            todas.append({**a, "liga": liga})
+
+    # Agrupa por label de data preservando ordem (Hoje → Amanhã → datas extras)
+    por_data: dict = {}
+    for a in todas:
+        por_data.setdefault(a["data"], []).append(a)
+
+    resultado: dict = {}
+    for data_label, apostas_dia in por_data.items():
+        mults = _gerar_multiplas_para(apostas_dia)
+        if mults:
+            resultado[data_label] = mults
 
     return resultado
 
@@ -573,6 +587,7 @@ document.getElementById('badge-data').textContent = '📅 ' + D.hoje + ' · ' + 
 
 let tabAtual = 'apostas';
 let filtroData = 'Todos';
+let filtroMultiplas = Object.keys(window.DATA.multiplas || {})[0] || 'Hoje';
 
 function mudarTab(tab, el) {
   tabAtual = tab;
@@ -797,8 +812,11 @@ function renderAnalise() {
 }
 
 // ── MÚLTIPLAS ─────────────────────────────────────────────────────────────────
+function setFiltroMultiplas(d) { filtroMultiplas = d; render(); }
+
 function renderMultiplas() {
-  const mults = D.multiplas || [];
+  const multsDict = D.multiplas || {};
+  const datas = Object.keys(multsDict);
 
   const aviso = `
     <div style="background:#1c1a05;border:1px solid #854d0e;border-radius:10px;padding:12px 16px;font-size:12px;color:#fbbf24;line-height:1.6">
@@ -808,7 +826,17 @@ function renderMultiplas() {
       Use múltiplas de <strong>2 a 3 seleções</strong> com as de maior confiança.
     </div>`;
 
-  if (!mults.length) return aviso + `<div class="vazio">📭 Apostas insuficientes para gerar múltiplas hoje.</div>`;
+  if (!datas.length) return aviso + `<div class="vazio">📭 Apostas insuficientes para gerar múltiplas.</div>`;
+
+  // Garante que filtroMultiplas aponta para uma data válida
+  if (!multsDict[filtroMultiplas]) filtroMultiplas = datas[0];
+
+  const filtroHtml = `<div class="filtros">${datas.map(d =>
+    `<button class="filtro-btn ${filtroMultiplas===d?'ativo':''}" onclick="setFiltroMultiplas('${d}')">${d}</button>`
+  ).join('')}</div>`;
+
+  const mults = multsDict[filtroMultiplas] || [];
+  if (!mults.length) return aviso + filtroHtml + `<div class="vazio">📭 Jogos insuficientes neste dia para gerar múltiplas.</div>`;
 
   const cards = mults.map(m => {
     const corOdd = m.odd_total >= 1.8 ? '#fbbf24' : '#34d399';
@@ -851,7 +879,7 @@ function renderMultiplas() {
     </div>`;
   }).join('');
 
-  return aviso + `<div class="mult-grid">${cards}</div>`;
+  return aviso + filtroHtml + `<div class="mult-grid">${cards}</div>`;
 }
 
 // ── VERIFICAR ─────────────────────────────────────────────────────────────────
