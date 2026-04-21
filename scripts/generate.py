@@ -106,16 +106,39 @@ def buscar_media_escanteios(team_id: int, liga_id: int) -> float:
 # ── Cálculos ──────────────────────────────────────────────────────────────────
 
 def extrair_medias(stats: dict, team_id: int, liga_id: int) -> dict:
-    f = stats.get("fixtures", {})
-    g = stats.get("goals", {})
-    jc = f.get("played", {}).get("home") or 1
-    jf = f.get("played", {}).get("away") or 1
+    f  = stats.get("fixtures", {})
+    g  = stats.get("goals", {})
+    cs = stats.get("clean_sheet", {})
+    fs = stats.get("failed_to_score", {})
+
+    jc = f.get("played", {}).get("home")  or 1
+    jf = f.get("played", {}).get("away")  or 1
+    jt = f.get("played", {}).get("total") or 1
+
+    gmc = (g.get("for",     {}).get("total", {}).get("home") or 0) / jc
+    gmf = (g.get("for",     {}).get("total", {}).get("away") or 0) / jf
+    gsc = (g.get("against", {}).get("total", {}).get("home") or 0) / jc
+    gsf = (g.get("against", {}).get("total", {}).get("away") or 0) / jf
+    escanteios = buscar_media_escanteios(team_id, liga_id)
+
     return {
-        "gols_marc_casa": (g.get("for",     {}).get("total", {}).get("home") or 0) / jc,
-        "gols_marc_fora": (g.get("for",     {}).get("total", {}).get("away") or 0) / jf,
-        "gols_sofr_casa": (g.get("against", {}).get("total", {}).get("home") or 0) / jc,
-        "gols_sofr_fora": (g.get("against", {}).get("total", {}).get("away") or 0) / jf,
-        "escanteios":     buscar_media_escanteios(team_id, liga_id),
+        # usados no Poisson
+        "gols_marc_casa": gmc,
+        "gols_marc_fora": gmf,
+        "gols_sofr_casa": gsc,
+        "gols_sofr_fora": gsf,
+        "escanteios":     escanteios,
+        # dados extras para aba Verificar
+        "jogos_total":  jt,
+        "jogos_casa":   jc,
+        "jogos_fora":   jf,
+        "gols_marcados_total": g.get("for",     {}).get("total", {}).get("total") or 0,
+        "gols_sofridos_total": g.get("against", {}).get("total", {}).get("total") or 0,
+        "media_gols_marc": round((gmc + gmf) / 2, 2),
+        "media_gols_sofr": round((gsc + gsf) / 2, 2),
+        "clean_sheets":  (cs.get("total") or 0),
+        "sem_marcar":    (fs.get("total") or 0),
+        "forma": (stats.get("form") or "")[-5:],
     }
 
 
@@ -234,7 +257,7 @@ def processar_liga(liga_id: int) -> list:
 
             print(f"    [{label_data}] {home['name']} x {away['name']} ({horario})")
 
-            probs = None
+            probs, mc, mf = None, None, None
             try:
                 sh = buscar_stats(home["id"], liga_id)
                 sa = buscar_stats(away["id"], liga_id)
@@ -245,6 +268,37 @@ def processar_liga(liga_id: int) -> list:
             except Exception as e:
                 print(f"      ERRO probs: {e}", file=sys.stderr)
 
+            verificar = None
+            if mc and mf and probs:
+                verificar = {
+                    "home_stats": {
+                        "jogos_total":  mc["jogos_total"],
+                        "jogos_casa":   mc["jogos_casa"],
+                        "media_gols_marc": round(mc["gols_marc_casa"], 2),
+                        "media_gols_sofr": round(mc["gols_sofr_casa"], 2),
+                        "escanteios":   round(mc["escanteios"], 1),
+                        "clean_sheets": mc["clean_sheets"],
+                        "sem_marcar":   mc["sem_marcar"],
+                        "forma":        mc["forma"],
+                    },
+                    "away_stats": {
+                        "jogos_total":  mf["jogos_total"],
+                        "jogos_fora":   mf["jogos_fora"],
+                        "media_gols_marc": round(mf["gols_marc_fora"], 2),
+                        "media_gols_sofr": round(mf["gols_sofr_fora"], 2),
+                        "escanteios":   round(mf["escanteios"], 1),
+                        "clean_sheets": mf["clean_sheets"],
+                        "sem_marcar":   mf["sem_marcar"],
+                        "forma":        mf["forma"],
+                    },
+                    "poisson": {
+                        "lam_c": probs["lam_c"],
+                        "lam_f": probs["lam_f"],
+                        "calc_c": f"{round(mc['gols_marc_casa'],2)} × {round(mf['gols_sofr_fora'],2)} × {FATOR_CASA}",
+                        "calc_f": f"{round(mf['gols_marc_fora'],2)} × {round(mc['gols_sofr_casa'],2)}",
+                    },
+                }
+
             jogos.append({
                 "data":    label_data,
                 "data_iso": data,
@@ -252,7 +306,8 @@ def processar_liga(liga_id: int) -> list:
                 "status":  status,
                 "home": {"id": home["id"], "nome": home["name"], "logo": home["logo"]},
                 "away": {"id": away["id"], "nome": away["name"], "logo": away["logo"]},
-                "probs": probs,
+                "probs":    probs,
+                "verificar": verificar,
             })
 
     return jogos
@@ -372,7 +427,31 @@ main{max-width:920px;margin:0 auto;padding:20px 16px;display:flex;flex-direction
 .filtro-btn.ativo{background:#3b82f620;border-color:#3b82f6;color:#38bdf8}
 
 .verde{color:#34d399}.amarelo{color:#fbbf24}.vermelho{color:#f87171}.azul{color:#38bdf8}
-@media(max-width:500px){.ou-grid{grid-template-columns:repeat(2,1fr)}.tab{padding:10px 14px;font-size:12px}}
+
+/* Verificar */
+.ver-card{background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden;margin-bottom:12px}
+.ver-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #334155;flex-wrap:wrap;gap:8px}
+.ver-match{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px}
+.ver-match img{width:26px;height:26px;object-fit:contain}
+.ver-body{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.ver-col{padding:14px 16px}
+.ver-col:first-child{border-right:1px solid #334155}
+.ver-col-titulo{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.ver-col-titulo img{width:20px;height:20px;object-fit:contain}
+.ver-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #0f172a;font-size:13px}
+.ver-row:last-child{border-bottom:none}
+.ver-lbl{color:#64748b}
+.ver-val{font-weight:600;color:#f1f5f9}
+.forma-pills{display:flex;gap:4px;flex-wrap:wrap;margin:8px 0}
+.pill{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800}
+.pill-W{background:#052e16;color:#34d399}
+.pill-D{background:#1c1a05;color:#fbbf24}
+.pill-L{background:#450a0a;color:#f87171}
+.ver-poisson{background:#0f172a;padding:12px 16px;border-top:1px solid #334155;font-size:12px;color:#94a3b8;display:flex;flex-direction:column;gap:4px}
+.ver-poisson strong{color:#38bdf8}
+.ver-poisson code{background:#1e293b;padding:2px 6px;border-radius:4px;font-family:monospace;color:#f1f5f9}
+
+@media(max-width:500px){.ou-grid{grid-template-columns:repeat(2,1fr)}.tab{padding:10px 14px;font-size:12px}.ver-body{grid-template-columns:1fr}.ver-col:first-child{border-right:none;border-bottom:1px solid #334155}}
 </style>
 </head>
 <body>
@@ -387,8 +466,9 @@ main{max-width:920px;margin:0 auto;padding:20px 16px;display:flex;flex-direction
 </header>
 
 <div class="tabs">
-  <button class="tab ativo" onclick="mudarTab('apostas')">🎯 Apostas</button>
-  <button class="tab" onclick="mudarTab('analise')">📊 Análise</button>
+  <button class="tab ativo" onclick="mudarTab('apostas',this)">🎯 Apostas</button>
+  <button class="tab" onclick="mudarTab('analise',this)">📊 Análise</button>
+  <button class="tab" onclick="mudarTab('verificar',this)">🔍 Verificar Dados</button>
 </div>
 
 <main id="app"></main>
@@ -400,16 +480,17 @@ document.getElementById('badge-data').textContent = '📅 ' + D.hoje + ' · ' + 
 let tabAtual = 'apostas';
 let filtroData = 'Todos';
 
+function mudarTab(tab, el) {
+  tabAtual = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('ativo'));
+  if (el) el.classList.add('ativo');
+  render();
+}
+
 const cor  = v => v >= 68 ? 'verde' : v >= 60 ? 'amarelo' : 'vermelho';
 const barC = {'verde':'#34d399','amarelo':'#fbbf24','vermelho':'#f87171'};
 const oddImpl = p => (100 / p).toFixed(2);
 
-function mudarTab(tab) {
-  tabAtual = tab;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('ativo'));
-  event.target.classList.add('ativo');
-  render();
-}
 
 // ── APOSTAS ──────────────────────────────────────────────────────────────────
 function renderApostas() {
@@ -560,11 +641,95 @@ function renderAnalise() {
   return filtroHtml + (blocosHtml || `<div class="vazio">📭 Nenhum jogo para este filtro.</div>`);
 }
 
+// ── VERIFICAR ─────────────────────────────────────────────────────────────────
+function formaHtml(forma) {
+  if (!forma) return '<span style="color:#475569;font-size:11px">sem dados</span>';
+  return '<div class="forma-pills">' +
+    forma.split('').map(c =>
+      `<div class="pill pill-${c}" title="${c==='W'?'Vitória':c==='D'?'Empate':'Derrota'}">${c}</div>`
+    ).join('') + '</div>';
+}
+
+function renderVerificarJogo(j, liga) {
+  const v = j.verificar;
+  if (!v) return `<div class="ver-card">
+    <div class="ver-header">
+      <div class="ver-match">
+        <img src="${j.home.logo}"> ${j.home.nome} × ${j.away.nome} <img src="${j.away.logo}">
+      </div>
+      <span style="font-size:12px;color:#475569">${j.data} · ${j.horario} BRT</span>
+    </div>
+    <div style="padding:16px;font-size:13px;color:#475569;font-style:italic">⚠️ Dados insuficientes para verificação.</div>
+  </div>`;
+
+  const hs = v.home_stats, as_ = v.away_stats, po = v.poisson;
+  const pct = (n, t) => t ? `${n} (${Math.round(n/t*100)}%)` : n;
+
+  return `<div class="ver-card">
+    <div class="ver-header">
+      <div class="ver-match">
+        <img src="${j.home.logo}"> ${j.home.nome} × ${j.away.nome} <img src="${j.away.logo}">
+      </div>
+      <span style="font-size:12px;color:#475569">${j.data} · ${j.horario} BRT · ${liga}</span>
+    </div>
+    <div class="ver-body">
+      <div class="ver-col">
+        <div class="ver-col-titulo"><img src="${j.home.logo}"> ${j.home.nome} <span style="color:#38bdf8">(Casa)</span></div>
+        <div class="forma-pills">${formaHtml(hs.forma)}</div>
+        <div class="ver-row"><span class="ver-lbl">Jogos na temporada</span><span class="ver-val">${hs.jogos_total} (${hs.jogos_casa} em casa)</span></div>
+        <div class="ver-row"><span class="ver-lbl">Gols marcados/jogo (casa)</span><span class="ver-val verde">${hs.media_gols_marc}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Gols sofridos/jogo (casa)</span><span class="ver-val vermelho">${hs.media_gols_sofr}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Escanteios médios</span><span class="ver-val azul">${hs.escanteios}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Clean sheets</span><span class="ver-val">${pct(hs.clean_sheets, hs.jogos_total)}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Jogos sem marcar</span><span class="ver-val">${pct(hs.sem_marcar, hs.jogos_total)}</span></div>
+      </div>
+      <div class="ver-col">
+        <div class="ver-col-titulo"><img src="${j.away.logo}"> ${j.away.nome} <span style="color:#f87171">(Fora)</span></div>
+        <div class="forma-pills">${formaHtml(as_.forma)}</div>
+        <div class="ver-row"><span class="ver-lbl">Jogos na temporada</span><span class="ver-val">${as_.jogos_total} (${as_.jogos_fora} fora)</span></div>
+        <div class="ver-row"><span class="ver-lbl">Gols marcados/jogo (fora)</span><span class="ver-val verde">${as_.media_gols_marc}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Gols sofridos/jogo (fora)</span><span class="ver-val vermelho">${as_.media_gols_sofr}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Escanteios médios</span><span class="ver-val azul">${as_.escanteios}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Clean sheets</span><span class="ver-val">${pct(as_.clean_sheets, as_.jogos_total)}</span></div>
+        <div class="ver-row"><span class="ver-lbl">Jogos sem marcar</span><span class="ver-val">${pct(as_.sem_marcar, as_.jogos_total)}</span></div>
+      </div>
+    </div>
+    <div class="ver-poisson">
+      <span>📐 <strong>Cálculo Poisson:</strong></span>
+      <span>λ ${j.home.nome} = <code>${po.calc_c}</code> = <strong>${po.lam_c} gols esperados</strong></span>
+      <span>λ ${j.away.nome} = <code>${po.calc_f}</code> = <strong>${po.lam_f} gols esperados</strong></span>
+      <span style="color:#475569;font-size:11px">Fórmula: gols marcados × gols sofridos adversário (× 1.1 fator casa para mandante)</span>
+    </div>
+  </div>`;
+}
+
+function renderVerificar() {
+  if (!D.total_jogos)
+    return `<div class="vazio">📭 Nenhum jogo para verificar.</div>`;
+
+  const filtroLabels = ['Todos', 'Hoje', 'Amanhã'];
+  const filtroHtml = `<div class="filtros">${filtroLabels.map(l =>
+    `<button class="filtro-btn ${filtroData===l?'ativo':''}" onclick="setFiltro('${l}')">${l}</button>`
+  ).join('')}</div>`;
+
+  const blocosHtml = Object.entries(D.ligas).map(([liga, jogos]) => {
+    const filtrados = filtroData === 'Todos' ? jogos : jogos.filter(j => j.data === filtroData);
+    if (!filtrados.length) return '';
+    return `<div class="liga-bloco">
+      <div class="liga-header"><span>${liga}</span><span class="conta-badge">${filtrados.length} jogos</span></div>
+      ${filtrados.map(j => renderVerificarJogo(j, liga)).join('')}
+    </div>`;
+  }).filter(Boolean).join('');
+
+  return filtroHtml + (blocosHtml || `<div class="vazio">📭 Nenhum jogo para este filtro.</div>`);
+}
+
 // ── Render principal ──────────────────────────────────────────────────────────
 function render() {
-  document.getElementById('app').innerHTML = tabAtual === 'apostas'
-    ? renderApostas()
-    : renderAnalise();
+  const html = tabAtual === 'apostas'   ? renderApostas()
+             : tabAtual === 'analise'   ? renderAnalise()
+             :                           renderVerificar();
+  document.getElementById('app').innerHTML = html;
 }
 
 render();
