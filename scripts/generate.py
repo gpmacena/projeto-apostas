@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """
-Busca jogos do dia via API-Football, calcula probabilidades Poisson
-e gera um index.html estático para o GitHub Pages.
+Busca jogos dos próximos 3 dias, calcula probabilidades Poisson e gera
+index.html estático com apostas recomendadas + análise completa.
 """
 
-import os
-import sys
-import json
-import time
+import os, sys, json, time
 import requests
 import numpy as np
 from scipy.stats import poisson
@@ -16,17 +13,20 @@ from pathlib import Path
 
 API_KEY = os.environ.get("API_FOOTBALL_KEY", "")
 if not API_KEY:
-    print("ERRO: API_FOOTBALL_KEY não definida", file=sys.stderr)
-    sys.exit(1)
+    sys.exit("ERRO: API_FOOTBALL_KEY não definida")
 
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS  = {"x-apisports-key": API_KEY}
 
 BRT   = timezone(timedelta(hours=-3))
-HOJE  = datetime.now(BRT).strftime("%Y-%m-%d")
-AGORA = datetime.now(BRT).strftime("%d/%m/%Y %H:%M")
-ANO   = datetime.now(BRT).year
-MES   = datetime.now(BRT).month
+_now  = datetime.now(BRT)
+AGORA = _now.strftime("%d/%m/%Y %H:%M")
+ANO   = _now.year
+MES   = _now.month
+
+# Datas que serão buscadas
+DATAS = [(_now + timedelta(days=d)).strftime("%Y-%m-%d") for d in range(3)]
+HOJE  = DATAS[0]
 
 LIGAS = {
     71:  "🇧🇷 Brasileirão Série A",
@@ -40,88 +40,74 @@ LIGAS = {
     61:  "🇫🇷 Ligue 1",
 }
 
-FATOR_CASA  = 1.1
-MAX_GOLS    = 7
-ULTIMOS_N   = 6   # partidas para calcular média de escanteios
+FATOR_CASA = 1.1
+MAX_GOLS   = 7
+ULTIMOS_N  = 6
 
-# Cache em memória para evitar buscar o mesmo time duas vezes no mesmo run
-_cache_stats:    dict = {}
-_cache_corners:  dict = {}
+# Limiares de confiança para sugerir aposta
+LIMIAR_FORTE  = 68.0
+LIMIAR_MEDIO  = 60.0
 
+_cache_stats   = {}
+_cache_corners = {}
+
+
+# ── API helpers ───────────────────────────────────────────────────────────────
 
 def _temporada(liga_id: int) -> int:
-    ligas_br = {71, 72, 73, 75}
-    if liga_id in ligas_br:
-        return ANO
-    return ANO - 1 if MES < 7 else ANO
+    return ANO if liga_id in {71, 72, 73, 75} else (ANO - 1 if MES < 7 else ANO)
 
 
-def _get(endpoint: str, params: dict) -> list | dict:
-    time.sleep(0.3)
+def _get(endpoint: str, params: dict):
+    time.sleep(0.25)
     r = requests.get(f"{BASE_URL}/{endpoint}", headers=HEADERS, params=params, timeout=15)
     r.raise_for_status()
     return r.json().get("response", [])
 
 
-def buscar_jogos(liga_id: int) -> list:
-    return _get("fixtures", {"league": liga_id, "date": HOJE, "season": _temporada(liga_id)})
+def buscar_jogos(liga_id: int, data: str) -> list:
+    return _get("fixtures", {"league": liga_id, "date": data, "season": _temporada(liga_id)})
 
 
 def buscar_stats(team_id: int, liga_id: int) -> dict | None:
-    chave = (team_id, liga_id)
-    if chave in _cache_stats:
-        return _cache_stats[chave]
-    data = _get("teams/statistics", {
-        "team": team_id, "league": liga_id, "season": _temporada(liga_id),
-    })
-    result = data if data else None
-    _cache_stats[chave] = result
-    return result
+    k = (team_id, liga_id)
+    if k not in _cache_stats:
+        data = _get("teams/statistics", {"team": team_id, "league": liga_id, "season": _temporada(liga_id)})
+        _cache_stats[k] = data if data else None
+    return _cache_stats[k]
 
 
 def buscar_media_escanteios(team_id: int, liga_id: int) -> float:
-    """Busca as últimas N partidas e calcula média de escanteios do time."""
-    chave = (team_id, liga_id)
-    if chave in _cache_corners:
-        return _cache_corners[chave]
-
-    fixtures = _get("fixtures", {
-        "team": team_id, "league": liga_id,
-        "season": _temporada(liga_id), "status": "FT", "last": ULTIMOS_N,
-    })
-
-    total_corners = 0
-    n = 0
+    k = (team_id, liga_id)
+    if k in _cache_corners:
+        return _cache_corners[k]
+    fixtures = _get("fixtures", {"team": team_id, "league": liga_id,
+                                  "season": _temporada(liga_id), "status": "FT", "last": ULTIMOS_N})
+    total, n = 0, 0
     for f in fixtures:
-        fid = f["fixture"]["id"]
-        stats = _get("fixtures/statistics", {"fixture": fid, "team": team_id})
+        stats = _get("fixtures/statistics", {"fixture": f["fixture"]["id"], "team": team_id})
         if stats:
             for s in stats[0].get("statistics", []):
                 if s["type"] == "Corner Kicks" and s["value"] is not None:
-                    total_corners += int(s["value"])
-                    n += 1
-                    break
-
-    media = (total_corners / n) if n else 4.5  # fallback razoável
-    _cache_corners[chave] = media
+                    total += int(s["value"]); n += 1; break
+    media = (total / n) if n else 4.5
+    _cache_corners[k] = media
     return media
 
+
+# ── Cálculos ──────────────────────────────────────────────────────────────────
 
 def extrair_medias(stats: dict, team_id: int, liga_id: int) -> dict:
     f = stats.get("fixtures", {})
     g = stats.get("goals", {})
-
-    jogos_casa  = f.get("played", {}).get("home")  or 1
-    jogos_fora  = f.get("played", {}).get("away")  or 1
-
-    escanteios = buscar_media_escanteios(team_id, liga_id)
-
+    jc = f.get("played", {}).get("home") or 1
+    jf = f.get("played", {}).get("away") or 1
     return {
-        "gols_marc_casa": (g.get("for",     {}).get("total", {}).get("home") or 0) / jogos_casa,
-        "gols_marc_fora": (g.get("for",     {}).get("total", {}).get("away") or 0) / jogos_fora,
-        "gols_sofr_casa": (g.get("against", {}).get("total", {}).get("home") or 0) / jogos_casa,
-        "gols_sofr_fora": (g.get("against", {}).get("total", {}).get("away") or 0) / jogos_fora,
-        "escanteios":     escanteios,
+        "gols_marc_casa": (g.get("for",     {}).get("total", {}).get("home") or 0) / jc,
+        "gols_marc_fora": (g.get("for",     {}).get("total", {}).get("away") or 0) / jf,
+        "gols_sofr_casa": (g.get("against", {}).get("total", {}).get("home") or 0) / jc,
+        "gols_sofr_fora": (g.get("against", {}).get("total", {}).get("away") or 0) / jf,
+        "escanteios":     buscar_media_escanteios(team_id, liga_id),
     }
 
 
@@ -142,124 +128,224 @@ def calcular_probs(mc: dict, mf: dict) -> dict:
     med_cant = mc["escanteios"] + mf["escanteios"]
 
     placares = sorted(
-        [{"p": f"{i}x{j}", "v": round(mat[i][j] * 100, 1)}
-         for i in range(MAX_GOLS) for j in range(MAX_GOLS)],
+        [{"p": f"{i}x{j}", "v": round(mat[i][j] * 100, 1)} for i in range(MAX_GOLS) for j in range(MAX_GOLS)],
         key=lambda x: x["v"], reverse=True,
     )[:6]
 
     return {
-        "lam_c":      round(lam_c, 2),
-        "lam_f":      round(lam_f, 2),
-        "vc":         round(vc  / tot * 100, 1),
-        "emp":        round(emp / tot * 100, 1),
-        "vf":         round(vf  / tot * 100, 1),
-        "o15":        round((1 - float(np.sum(mat[:2, :2]))) * 100, 1),
-        "o25":        round((1 - float(np.sum(mat[:3, :3]))) * 100, 1),
-        "o35":        round((1 - float(np.sum(mat[:4, :4]))) * 100, 1),
-        "btts":       round(float(np.sum(mat[1:, 1:])) * 100, 1),
+        "lam_c": round(lam_c, 2), "lam_f": round(lam_f, 2),
+        "vc":    round(vc  / tot * 100, 1),
+        "emp":   round(emp / tot * 100, 1),
+        "vf":    round(vf  / tot * 100, 1),
+        "dc1x":  round((vc + emp) / tot * 100, 1),
+        "dcx2":  round((emp + vf) / tot * 100, 1),
+        "o15":   round((1 - float(np.sum(mat[:2, :2]))) * 100, 1),
+        "o25":   round((1 - float(np.sum(mat[:3, :3]))) * 100, 1),
+        "o35":   round((1 - float(np.sum(mat[:4, :4]))) * 100, 1),
+        "u25":   round(float(np.sum(mat[:3, :3])) * 100, 1),
+        "btts":  round(float(np.sum(mat[1:, 1:])) * 100, 1),
+        "no_btts": round(float(1 - np.sum(mat[1:, 1:])) * 100, 1),
         "cant_media": round(med_cant, 1),
-        "o85":        round((1 - poisson.cdf(8,  med_cant)) * 100, 1),
-        "o95":        round((1 - poisson.cdf(9,  med_cant)) * 100, 1),
-        "o105":       round((1 - poisson.cdf(10, med_cant)) * 100, 1),
-        "placares":   placares,
+        "o85":   round((1 - poisson.cdf(8,  med_cant)) * 100, 1),
+        "o95":   round((1 - poisson.cdf(9,  med_cant)) * 100, 1),
+        "o105":  round((1 - poisson.cdf(10, med_cant)) * 100, 1),
+        "u95":   round(poisson.cdf(9, med_cant) * 100, 1),
+        "placares": placares,
     }
 
 
-def processar_liga(liga_id: int) -> list:
-    print(f"  {LIGAS[liga_id]}...")
-    try:
-        fixtures = buscar_jogos(liga_id)
-    except Exception as e:
-        print(f"    ERRO fixtures: {e}", file=sys.stderr)
+def extrair_apostas(jogo: dict) -> list:
+    """Retorna lista de apostas sugeridas para o jogo, ordenada por probabilidade."""
+    p = jogo.get("probs")
+    if not p:
         return []
 
+    home = jogo["home"]["nome"]
+    away = jogo["away"]["nome"]
+
+    candidatas = [
+        {"mercado": f"Vitória {home}",    "prob": p["vc"],       "cod": "1"},
+        {"mercado": f"Vitória {away}",    "prob": p["vf"],       "cod": "2"},
+        {"mercado": "Dupla Chance 1X",    "prob": p["dc1x"],     "cod": "1X"},
+        {"mercado": "Dupla Chance X2",    "prob": p["dcx2"],     "cod": "X2"},
+        {"mercado": "Over 1.5 gols",      "prob": p["o15"],      "cod": "O1.5"},
+        {"mercado": "Over 2.5 gols",      "prob": p["o25"],      "cod": "O2.5"},
+        {"mercado": "Over 3.5 gols",      "prob": p["o35"],      "cod": "O3.5"},
+        {"mercado": "Under 2.5 gols",     "prob": p["u25"],      "cod": "U2.5"},
+        {"mercado": "BTTS — Ambos marcam","prob": p["btts"],     "cod": "BTTS"},
+        {"mercado": "BTTS — Não",         "prob": p["no_btts"],  "cod": "BTTS-N"},
+        {"mercado": "Over 8.5 escanteios","prob": p["o85"],      "cod": "O8.5C"},
+        {"mercado": "Over 9.5 escanteios","prob": p["o95"],      "cod": "O9.5C"},
+        {"mercado": "Over 10.5 escanteios","prob": p["o105"],    "cod": "O10.5C"},
+        {"mercado": "Under 9.5 escanteios","prob": p["u95"],     "cod": "U9.5C"},
+    ]
+
+    sugeridas = [c for c in candidatas if c["prob"] >= LIMIAR_MEDIO]
+    sugeridas.sort(key=lambda x: x["prob"], reverse=True)
+
+    for s in sugeridas:
+        s["forte"] = s["prob"] >= LIMIAR_FORTE
+        s["home"]  = home
+        s["away"]  = away
+        s["horario"] = jogo["horario"]
+        s["data"]    = jogo["data"]
+        s["home_logo"] = jogo["home"]["logo"]
+        s["away_logo"] = jogo["away"]["logo"]
+
+    return sugeridas
+
+
+# ── Processamento ─────────────────────────────────────────────────────────────
+
+def processar_liga(liga_id: int) -> list:
+    nome = LIGAS[liga_id]
+    print(f"  {nome}...")
     jogos = []
-    for f in fixtures:
-        home   = f["teams"]["home"]
-        away   = f["teams"]["away"]
-        status = f["fixture"]["status"]["short"]
 
+    for data in DATAS:
         try:
-            dt_utc = datetime.fromisoformat(f["fixture"]["date"].replace("Z", "+00:00"))
-            horario = dt_utc.astimezone(BRT).strftime("%H:%M")
-        except Exception:
-            horario = "--:--"
-
-        print(f"    {home['name']} x {away['name']} ({horario})")
-
-        try:
-            stats_h = buscar_stats(home["id"], liga_id)
-            stats_a = buscar_stats(away["id"], liga_id)
+            fixtures = buscar_jogos(liga_id, data)
         except Exception as e:
-            print(f"      ERRO stats: {e}", file=sys.stderr)
-            stats_h = stats_a = None
+            print(f"    ERRO fixtures {data}: {e}", file=sys.stderr)
+            continue
 
-        probs = None
-        if stats_h and stats_a:
+        for f in fixtures:
+            home   = f["teams"]["home"]
+            away   = f["teams"]["away"]
+            status = f["fixture"]["status"]["short"]
+
             try:
-                mc    = extrair_medias(stats_h, home["id"], liga_id)
-                mf    = extrair_medias(stats_a, away["id"], liga_id)
-                probs = calcular_probs(mc, mf)
+                dt_utc  = datetime.fromisoformat(f["fixture"]["date"].replace("Z", "+00:00"))
+                horario = dt_utc.astimezone(BRT).strftime("%H:%M")
+            except Exception:
+                horario = "--:--"
+
+            label_data = "Hoje" if data == HOJE else \
+                         "Amanhã" if data == DATAS[1] else \
+                         datetime.strptime(data, "%Y-%m-%d").strftime("%d/%m")
+
+            print(f"    [{label_data}] {home['name']} x {away['name']} ({horario})")
+
+            probs = None
+            try:
+                sh = buscar_stats(home["id"], liga_id)
+                sa = buscar_stats(away["id"], liga_id)
+                if sh and sa:
+                    mc    = extrair_medias(sh, home["id"], liga_id)
+                    mf    = extrair_medias(sa, away["id"], liga_id)
+                    probs = calcular_probs(mc, mf)
             except Exception as e:
                 print(f"      ERRO probs: {e}", file=sys.stderr)
 
-        jogos.append({
-            "horario": horario,
-            "status":  status,
-            "home": {"id": home["id"], "nome": home["name"], "logo": home["logo"]},
-            "away": {"id": away["id"], "nome": away["name"], "logo": away["logo"]},
-            "probs": probs,
-        })
+            jogos.append({
+                "data":    label_data,
+                "data_iso": data,
+                "horario": horario,
+                "status":  status,
+                "home": {"id": home["id"], "nome": home["name"], "logo": home["logo"]},
+                "away": {"id": away["id"], "nome": away["name"], "logo": away["logo"]},
+                "probs": probs,
+            })
 
     return jogos
 
 
 def gerar_dados() -> dict:
-    ligas_com_jogos: dict = {}
-    total = 0
+    ligas: dict = {}
+    apostas_por_liga: dict = {}
+    total_jogos = 0
+
     for liga_id, nome in LIGAS.items():
         jogos = processar_liga(liga_id)
-        if jogos:
-            ligas_com_jogos[nome] = jogos
-            total += len(jogos)
-    return {"data": AGORA, "hoje": HOJE, "total": total, "ligas": ligas_com_jogos}
+        if not jogos:
+            continue
+
+        ligas[nome] = jogos
+        total_jogos += len(jogos)
+
+        # Extrai apostas de todos os jogos da liga
+        todas_apostas = []
+        for j in jogos:
+            todas_apostas.extend(extrair_apostas(j))
+
+        # Ordena por probabilidade e pega as melhores
+        todas_apostas.sort(key=lambda x: x["prob"], reverse=True)
+        apostas_por_liga[nome] = todas_apostas[:20]   # até 20 por liga
+
+    return {
+        "data":             AGORA,
+        "hoje":             HOJE,
+        "datas":            DATAS,
+        "total_jogos":      total_jogos,
+        "ligas":            ligas,
+        "apostas_por_liga": apostas_por_liga,
+    }
 
 
-# ── HTML template ─────────────────────────────────────────────────────────────
+# ── HTML ──────────────────────────────────────────────────────────────────────
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>⚽ Apostas do Dia</title>
+<title>⚽ Apostas Futebol</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:#0f172a;color:#f1f5f9;font-family:'Inter',system-ui,sans-serif;min-height:100vh;padding:0 0 48px}
-header{background:#1e293b;border-bottom:1px solid #334155;padding:18px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
-.logo{font-size:20px;font-weight:800}
-.sub{font-size:12px;color:#64748b;margin-top:3px}
+body{background:#0f172a;color:#f1f5f9;font-family:'Inter',system-ui,sans-serif;min-height:100vh;padding-bottom:60px}
+header{background:#1e293b;border-bottom:2px solid #3b82f6;padding:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:50}
+.logo{font-size:20px;font-weight:800;letter-spacing:-.5px}
 .badge{background:#0f172a;border:1px solid #334155;border-radius:20px;padding:4px 14px;font-size:12px;color:#64748b}
-main{max-width:860px;margin:0 auto;padding:20px 16px;display:flex;flex-direction:column;gap:24px}
-.liga-titulo{font-size:13px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#94a3b8;padding-bottom:10px;border-bottom:1px solid #1e293b;margin-bottom:12px}
-.jogos{display:flex;flex-direction:column;gap:12px}
+
+/* Tabs */
+.tabs{display:flex;gap:0;border-bottom:1px solid #334155;background:#1e293b;position:sticky;top:61px;z-index:40}
+.tab{padding:12px 20px;font-size:13px;font-weight:600;cursor:pointer;color:#64748b;border-bottom:3px solid transparent;transition:all .2s;background:none;border-top:none;border-left:none;border-right:none}
+.tab:hover{color:#f1f5f9}
+.tab.ativo{color:#38bdf8;border-bottom-color:#38bdf8}
+
+main{max-width:920px;margin:0 auto;padding:20px 16px;display:flex;flex-direction:column;gap:24px}
+
+/* Seção de apostas */
+.liga-bloco{display:flex;flex-direction:column;gap:10px}
+.liga-header{font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#94a3b8;padding-bottom:10px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between}
+.conta-badge{background:#3b82f620;color:#38bdf8;border-radius:12px;padding:2px 10px;font-size:11px}
+
+/* Card de aposta */
+.aposta{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.aposta.forte{border-left:3px solid #34d399}
+.aposta.medio{border-left:3px solid #fbbf24}
+.logos{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.logos img{width:22px;height:22px;object-fit:contain}
+.aposta-info{flex:1;min-width:140px}
+.aposta-partida{font-size:11px;color:#64748b;margin-bottom:2px}
+.aposta-mercado{font-size:14px;font-weight:700;color:#f1f5f9}
+.aposta-meta{display:flex;align-items:center;gap:12px;margin-left:auto}
+.aposta-data{font-size:11px;color:#475569;white-space:nowrap}
+.prob-badge{padding:5px 12px;border-radius:8px;font-size:15px;font-weight:800;min-width:58px;text-align:center}
+.prob-forte{background:#052e16;color:#34d399}
+.prob-medio{background:#1c1a05;color:#fbbf24}
+.odd-impl{font-size:11px;color:#475569;text-align:center;margin-top:2px}
+
+/* Jogos (análise) */
 .card{background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden}
 .card-topo{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;gap:12px;flex-wrap:wrap}
-.times{display:flex;align-items:center;gap:16px;flex:1;min-width:200px}
+.times{display:flex;align-items:center;gap:16px;flex:1;min-width:180px}
 .time-bloco{display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;text-align:center}
-.time-bloco img{width:38px;height:38px;object-fit:contain}
+.time-bloco img{width:36px;height:36px;object-fit:contain}
 .time-nome{font-size:13px;font-weight:600;line-height:1.2}
-.vs{font-size:18px;font-weight:800;color:#475569;flex-shrink:0}
+.vs{font-size:17px;font-weight:800;color:#475569;flex-shrink:0}
+.card-meta{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
 .horario{font-size:13px;color:#64748b;white-space:nowrap}
+.data-tag{font-size:11px;color:#3b82f6;font-weight:600}
 .status-live{color:#ef4444;font-weight:700;font-size:12px;animation:blink 1.2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
 .probs{padding:0 16px 14px;display:flex;flex-direction:column;gap:10px}
 .resultado{display:flex;gap:8px}
 .res-item{flex:1;background:#0f172a;border-radius:8px;padding:8px 6px;text-align:center}
 .res-label{font-size:11px;color:#64748b;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.res-valor{font-size:19px;font-weight:700}
+.res-valor{font-size:18px;font-weight:700}
 .res-bar{height:4px;border-radius:2px;margin-top:6px;background:#1e293b}
-.res-fill{height:100%;border-radius:2px;transition:width .4s}
+.res-fill{height:100%;border-radius:2px}
 .ou-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .ou-item{background:#0f172a;border-radius:6px;padding:7px 8px;display:flex;justify-content:space-between;align-items:center}
 .ou-label{font-size:11px;color:#94a3b8}
@@ -271,67 +357,147 @@ main{max-width:860px;margin:0 auto;padding:20px 16px;display:flex;flex-direction
 .plac-pct{font-size:11px;color:#64748b}
 .sem-probs{font-size:12px;color:#475569;padding:0 16px 14px;font-style:italic}
 .vazio{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:40px;text-align:center;color:#475569;font-size:15px}
+
+/* Filtro de data */
+.filtros{display:flex;gap:8px;flex-wrap:wrap}
+.filtro-btn{padding:6px 14px;border-radius:20px;border:1px solid #334155;background:none;color:#64748b;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s}
+.filtro-btn.ativo{background:#3b82f620;border-color:#3b82f6;color:#38bdf8}
+
 .verde{color:#34d399}.amarelo{color:#fbbf24}.vermelho{color:#f87171}.azul{color:#38bdf8}
-@media(max-width:500px){.ou-grid{grid-template-columns:repeat(2,1fr)}.res-valor{font-size:16px}}
+@media(max-width:500px){.ou-grid{grid-template-columns:repeat(2,1fr)}.tab{padding:10px 14px;font-size:12px}}
 </style>
 </head>
 <body>
 <script>window.DATA=__DATA__;</script>
+
 <header>
   <div>
-    <div class="logo">⚽ Apostas do Dia</div>
-    <div class="sub">Poisson · Gols · Escanteios · Placares</div>
+    <div class="logo">⚽ Futebol · Apostas & Análise</div>
+    <div style="font-size:12px;color:#64748b;margin-top:3px">Poisson · Próximos 3 dias</div>
   </div>
   <div class="badge" id="badge-data"></div>
 </header>
+
+<div class="tabs">
+  <button class="tab ativo" onclick="mudarTab('apostas')">🎯 Apostas</button>
+  <button class="tab" onclick="mudarTab('analise')">📊 Análise</button>
+</div>
+
 <main id="app"></main>
+
 <script>
-const D=window.DATA;
-document.getElementById('badge-data').textContent='📅 '+D.hoje+' · atualizado '+D.data;
+const D = window.DATA;
+document.getElementById('badge-data').textContent = '📅 ' + D.hoje + ' · ' + D.data;
 
-const cor=v=>v>=60?'verde':v>=40?'amarelo':'vermelho';
-const barColor={'verde':'#34d399','amarelo':'#fbbf24','vermelho':'#f87171'};
+let tabAtual = 'apostas';
+let filtroData = 'Todos';
 
-function renderJogo(j){
-  const p=j.probs;
-  const live=j.status==='1H'||j.status==='2H'||j.status==='HT'||j.status==='ET'||j.status==='P';
-  const horarioBadge=live
-    ?`<span class="status-live">⬤ AO VIVO</span>`
-    :`<span class="horario">${j.horario} BRT</span>`;
+const cor  = v => v >= 68 ? 'verde' : v >= 60 ? 'amarelo' : 'vermelho';
+const barC = {'verde':'#34d399','amarelo':'#fbbf24','vermelho':'#f87171'};
+const oddImpl = p => (100 / p).toFixed(2);
 
-  let body=`<div class="sem-probs">⚠️ Estatísticas insuficientes para este jogo.</div>`;
+function mudarTab(tab) {
+  tabAtual = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('ativo'));
+  event.target.classList.add('ativo');
+  render();
+}
 
-  if(p){
-    const maxR=Math.max(p.vc,p.emp,p.vf);
-    const res=[
-      {l:j.home.nome,v:p.vc, c:cor(p.vc)},
-      {l:'Empate',   v:p.emp,c:cor(p.emp)},
-      {l:j.away.nome,v:p.vf, c:cor(p.vf)},
-    ];
-    body=`<div class="probs">
-      <div class="resultado">${res.map(r=>`
-        <div class="res-item">
-          <div class="res-label" title="${r.l}">${r.l.split(' ')[0]}</div>
-          <div class="res-valor ${r.c}">${r.v}%</div>
-          <div class="res-bar"><div class="res-fill" style="width:${(r.v/maxR*100).toFixed(1)}%;background:${barColor[r.c]}"></div></div>
-        </div>`).join('')}
+// ── APOSTAS ──────────────────────────────────────────────────────────────────
+function renderApostas() {
+  const ligas = D.apostas_por_liga;
+  if (!Object.keys(ligas).length)
+    return `<div class="vazio">📭 Nenhuma aposta encontrada nos próximos 3 dias.</div>`;
+
+  const labelsData = ['Todos', 'Hoje', 'Amanhã', ...D.datas.slice(2).map((_,i) =>
+    new Date(D.datas[i+2]+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}))];
+
+  const filtroHtml = `<div class="filtros">${labelsData.map(l =>
+    `<button class="filtro-btn ${filtroData===l?'ativo':''}" onclick="setFiltro('${l}')">${l}</button>`
+  ).join('')}</div>`;
+
+  const blocosHtml = Object.entries(ligas).map(([liga, apostas]) => {
+    const filtradas = filtroData === 'Todos' ? apostas
+      : apostas.filter(a => a.data === filtroData);
+    if (!filtradas.length) return '';
+
+    const cards = filtradas.map(a => `
+      <div class="aposta ${a.forte?'forte':'medio'}">
+        <div class="logos">
+          <img src="${a.home_logo}" alt="${a.home}">
+          <img src="${a.away_logo}" alt="${a.away}">
+        </div>
+        <div class="aposta-info">
+          <div class="aposta-partida">${a.home} × ${a.away}</div>
+          <div class="aposta-mercado">${a.mercado}</div>
+        </div>
+        <div class="aposta-meta">
+          <div class="aposta-data">${a.data} · ${a.horario} BRT</div>
+          <div style="text-align:center">
+            <div style="font-size:10px;color:#64748b;margin-bottom:3px">Chance de acerto</div>
+            <div class="prob-badge ${a.forte?'prob-forte':'prob-medio'}">${a.prob}%</div>
+            <div class="odd-impl">odd mín. ${oddImpl(a.prob)}</div>
+          </div>
+        </div>
+      </div>`).join('');
+
+    return `<div class="liga-bloco">
+      <div class="liga-header">
+        <span>${liga}</span>
+        <span class="conta-badge">${filtradas.length} apostas</span>
       </div>
-      <div class="ou-grid">
-        ${[
-          {l:'Over 1.5 gols',v:p.o15},
-          {l:'Over 2.5 gols',v:p.o25},
-          {l:'Over 3.5 gols',v:p.o35},
-          {l:'BTTS',         v:p.btts},
-          {l:'Over 8.5 cant.',v:p.o85},
-          {l:'Over 9.5 cant.',v:p.o95},
-        ].map(o=>`<div class="ou-item">
-          <span class="ou-label">${o.l}</span>
-          <span class="ou-val ${cor(o.v)}">${o.v}%</span>
-        </div>`).join('')}
+      ${cards}
+    </div>`;
+  }).join('');
+
+  return filtroHtml + (blocosHtml || `<div class="vazio">📭 Nenhuma aposta para o filtro selecionado.</div>`);
+}
+
+function setFiltro(f) {
+  filtroData = f;
+  render();
+}
+
+// ── ANÁLISE ──────────────────────────────────────────────────────────────────
+function renderJogo(j) {
+  const p = j.probs;
+  const live = ['1H','2H','HT','ET','P'].includes(j.status);
+  const horarioBadge = live
+    ? `<span class="status-live">⬤ AO VIVO</span>`
+    : `<span class="horario">${j.horario} BRT</span>`;
+
+  let body = `<div class="sem-probs">⚠️ Estatísticas insuficientes para este jogo.</div>`;
+  if (p) {
+    const maxR = Math.max(p.vc, p.emp, p.vf);
+    body = `<div class="probs">
+      <div class="resultado">${[
+        {l:j.home.nome, v:p.vc,  c:cor(p.vc)},
+        {l:'Empate',    v:p.emp, c:cor(p.emp)},
+        {l:j.away.nome, v:p.vf,  c:cor(p.vf)},
+      ].map(r=>`<div class="res-item">
+        <div class="res-label" title="${r.l}">${r.l.split(' ')[0]}</div>
+        <div class="res-valor ${r.c}">${r.v}%</div>
+        <div class="res-bar"><div class="res-fill" style="width:${(r.v/maxR*100).toFixed(1)}%;background:${barC[r.c]}"></div></div>
+      </div>`).join('')}
+      </div>
+      <div class="ou-grid">${[
+        {l:'Over 1.5 gols', v:p.o15},
+        {l:'Over 2.5 gols', v:p.o25},
+        {l:'Over 3.5 gols', v:p.o35},
+        {l:'Under 2.5 gols',v:p.u25},
+        {l:'BTTS — Sim',    v:p.btts},
+        {l:'BTTS — Não',    v:p.no_btts},
+        {l:'Dupla 1X',      v:p.dc1x},
+        {l:'Dupla X2',      v:p.dcx2},
+        {l:'Over 9.5 cant.',v:p.o95},
+      ].map(o=>`<div class="ou-item">
+        <span class="ou-label">${o.l}</span>
+        <span class="ou-val ${cor(o.v)}">${o.v}%</span>
+      </div>`).join('')}
       </div>
       <div class="cant-row">
-        <span>Over 10.5 cant.: <strong class="${cor(p.o105)}">${p.o105}%</strong></span>
-        <span>λ ${p.lam_c} × ${p.lam_f} · cant. esperados: <strong class="azul">${p.cant_media}</strong></span>
+        <span>Over 10.5 cant.: <strong class="${cor(p.o105)}">${p.o105}%</strong> · Under 9.5: <strong class="${cor(p.u95)}">${p.u95}%</strong></span>
+        <span>λ ${p.lam_c}×${p.lam_f} · cant. esp. <strong class="azul">${p.cant_media}</strong></span>
       </div>
       <div class="placares-row">${p.placares.map(x=>`
         <div class="plac">
@@ -355,23 +521,44 @@ function renderJogo(j){
           <div class="time-nome">${j.away.nome}</div>
         </div>
       </div>
-      ${horarioBadge}
+      <div class="card-meta">
+        <span class="data-tag">${j.data}</span>
+        ${horarioBadge}
+      </div>
     </div>
     ${body}
   </div>`;
 }
 
-function render(){
-  if(!D.total){
-    document.getElementById('app').innerHTML=`<div class="vazio">📭 Nenhum jogo encontrado para hoje (${D.hoje}) nas ligas monitoradas.</div>`;
-    return;
-  }
-  document.getElementById('app').innerHTML=Object.entries(D.ligas).map(([liga,jogos])=>`
-    <section>
-      <div class="liga-titulo">${liga}</div>
-      <div class="jogos">${jogos.map(renderJogo).join('')}</div>
-    </section>`).join('');
+function renderAnalise() {
+  if (!D.total_jogos)
+    return `<div class="vazio">📭 Nenhum jogo nos próximos 3 dias.</div>`;
+
+  const filtroLabels = ['Todos', 'Hoje', 'Amanhã'];
+  const filtroHtml = `<div class="filtros">${filtroLabels.map(l =>
+    `<button class="filtro-btn ${filtroData===l?'ativo':''}" onclick="setFiltro('${l}')">${l}</button>`
+  ).join('')}</div>`;
+
+  const blocosHtml = Object.entries(D.ligas).map(([liga, jogos]) => {
+    const filtrados = filtroData === 'Todos' ? jogos
+      : jogos.filter(j => j.data === filtroData);
+    if (!filtrados.length) return '';
+    return `<div class="liga-bloco">
+      <div class="liga-header"><span>${liga}</span><span class="conta-badge">${filtrados.length} jogos</span></div>
+      <div style="display:flex;flex-direction:column;gap:12px">${filtrados.map(renderJogo).join('')}</div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  return filtroHtml + (blocosHtml || `<div class="vazio">📭 Nenhum jogo para este filtro.</div>`);
 }
+
+// ── Render principal ──────────────────────────────────────────────────────────
+function render() {
+  document.getElementById('app').innerHTML = tabAtual === 'apostas'
+    ? renderApostas()
+    : renderAnalise();
+}
+
 render();
 </script>
 </body>
@@ -379,13 +566,13 @@ render();
 
 
 def main():
-    print(f"Data: {HOJE} ({AGORA} BRT)")
+    print(f"Datas: {', '.join(DATAS)} ({AGORA} BRT)")
     dados = gerar_dados()
-    print(f"\nTotal: {dados['total']} jogos encontrados")
+    total_apostas = sum(len(v) for v in dados["apostas_por_liga"].values())
+    print(f"\nTotal: {dados['total_jogos']} jogos · {total_apostas} apostas sugeridas")
 
     html = HTML_TEMPLATE.replace("__DATA__", json.dumps(dados, ensure_ascii=False))
-
-    out = Path(__file__).parent.parent / "output" / "index.html"
+    out  = Path(__file__).parent.parent / "output" / "index.html"
     out.parent.mkdir(exist_ok=True)
     out.write_text(html, encoding="utf-8")
     print(f"Gerado: {out}")
