@@ -8,6 +8,14 @@ import os, sys, json, time
 import requests
 import numpy as np
 from scipy.stats import poisson
+
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer): return int(obj)
+        if isinstance(obj, np.floating): return float(obj)
+        if isinstance(obj, np.bool_):   return bool(obj)
+        return super().default(obj)
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -571,7 +579,7 @@ def main():
     total_apostas = sum(len(v) for v in dados["apostas_por_liga"].values())
     print(f"\nTotal: {dados['total_jogos']} jogos · {total_apostas} apostas sugeridas")
 
-    html = HTML_TEMPLATE.replace("__DATA__", json.dumps(dados, ensure_ascii=False))
+    html = HTML_TEMPLATE.replace("__DATA__", json.dumps(dados, ensure_ascii=False, cls=NumpyEncoder))
     out  = Path(__file__).parent.parent / "output" / "index.html"
     out.parent.mkdir(exist_ok=True)
     out.write_text(html, encoding="utf-8")
