@@ -54,7 +54,8 @@ ULTIMOS_N  = 6
 
 # Limiares de confiança para sugerir aposta
 LIMIAR_FORTE  = 68.0
-LIMIAR_MEDIO  = 60.0
+LIMIAR_MEDIO  = 55.0   # coleta a partir de 55% — a filtragem por odd é feita no HTML
+ODD_MINIMA    = 1.50   # só mostra apostas onde a odd justa >= 1.50 (prob <= 66.7%)
 
 _cache_stats   = {}
 _cache_corners = {}
@@ -342,6 +343,7 @@ def gerar_dados() -> dict:
         "total_jogos":      total_jogos,
         "ligas":            ligas,
         "apostas_por_liga": apostas_por_liga,
+        "odd_minima":       ODD_MINIMA,
     }
 
 
@@ -492,11 +494,59 @@ const barC = {'verde':'#34d399','amarelo':'#fbbf24','vermelho':'#f87171'};
 const oddImpl = p => (100 / p).toFixed(2);
 
 
+// ── GLOSSÁRIO ─────────────────────────────────────────────────────────────────
+const GLOSSARIO = [
+  {cod:'1',    nome:'Vitória Casa',          desc:'O time mandante (da casa) vence no tempo normal.'},
+  {cod:'2',    nome:'Vitória Fora',          desc:'O time visitante vence no tempo normal.'},
+  {cod:'1X',   nome:'Dupla Chance 1X',       desc:'Você ganha se o time da casa vencer OU empatar. Cobre 2 dos 3 resultados — mais seguro que apostar só na vitória.'},
+  {cod:'X2',   nome:'Dupla Chance X2',       desc:'Você ganha se o visitante vencer OU empatar. Boa proteção quando o visitante é forte mas pode empatar.'},
+  {cod:'O1.5', nome:'Over 1.5 gols',         desc:'O jogo termina com 2 ou mais gols no total. Muito frequente — odd costuma ser baixa.'},
+  {cod:'O2.5', nome:'Over 2.5 gols',         desc:'3 ou mais gols no total. O mercado mais popular. Equilíbrio entre chance e odd.'},
+  {cod:'O3.5', nome:'Over 3.5 gols',         desc:'4 ou mais gols no total. Menos provável, mas odd mais alta.'},
+  {cod:'U2.5', nome:'Under 2.5 gols',        desc:'2 gols ou menos no total (0-0, 1-0, 1-1, 2-0, etc). Bom para jogos defensivos ou equilibrados.'},
+  {cod:'BTTS', nome:'BTTS — Ambos marcam',   desc:'Os dois times marcam pelo menos 1 gol cada. Não importa o placar, só que ambos balançaram a rede.'},
+  {cod:'BTTS-N',nome:'BTTS — Não',           desc:'Pelo menos um time NÃO marca. Inclui vitórias por 1-0, 2-0 e empate 0-0.'},
+  {cod:'O8.5C',nome:'Over 8.5 escanteios',   desc:'9 ou mais escanteios no total dos dois times. Jogos com muita pressão ofensiva tendem a ter mais escanteios.'},
+  {cod:'O9.5C',nome:'Over 9.5 escanteios',   desc:'10 ou mais escanteios. Mercado popular para acompanhar ao vivo.'},
+  {cod:'O10.5C',nome:'Over 10.5 escanteios', desc:'11 ou mais escanteios. Odds mais atrativas, mas menos provável.'},
+  {cod:'U9.5C',nome:'Under 9.5 escanteios',  desc:'9 ou menos escanteios. Jogos mais truncados ou de meio-campo tendem a ter menos escanteios.'},
+];
+
+let glossarioAberto = false;
+function toggleGlossario() { glossarioAberto = !glossarioAberto; render(); }
+
+function renderGlossario() {
+  if (!glossarioAberto) return `
+    <div onclick="toggleGlossario()" style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:13px;font-weight:600;color:#94a3b8">📖 O que significa cada tipo de aposta? <span style="color:#3b82f6">(clique para ver)</span></span>
+      <span style="color:#64748b">▼</span>
+    </div>`;
+  return `
+    <div style="background:#1e293b;border:1px solid #3b82f6;border-radius:10px;overflow:hidden">
+      <div onclick="toggleGlossario()" style="padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155">
+        <span style="font-size:13px;font-weight:700;color:#38bdf8">📖 Guia de Mercados</span>
+        <span style="color:#64748b">▲ fechar</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1px;background:#334155">
+        ${GLOSSARIO.map(g=>`
+          <div style="background:#1e293b;padding:12px 14px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+              <span style="background:#0f172a;color:#38bdf8;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700;font-family:monospace;flex-shrink:0">${g.cod}</span>
+              <span style="font-weight:700;font-size:13px;color:#f1f5f9">${g.nome}</span>
+            </div>
+            <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0">${g.desc}</p>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
 // ── APOSTAS ──────────────────────────────────────────────────────────────────
 function renderApostas() {
   const ligas = D.apostas_por_liga;
-  if (!Object.keys(ligas).length)
-    return `<div class="vazio">📭 Nenhuma aposta encontrada nos próximos 3 dias.</div>`;
+  const oddMin = D.odd_minima || 1.5;
+
+  // Filtra: prob >= 55% E odd implícita >= 1.5 (prob <= ~66.7%)
+  const temValor = a => (100 / a.prob) >= oddMin && a.prob >= 55;
 
   const labelsData = ['Todos', 'Hoje', 'Amanhã', ...D.datas.slice(2).map((_,i) =>
     new Date(D.datas[i+2]+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}))];
@@ -505,13 +555,18 @@ function renderApostas() {
     `<button class="filtro-btn ${filtroData===l?'ativo':''}" onclick="setFiltro('${l}')">${l}</button>`
   ).join('')}</div>`;
 
+  const totalValor = Object.values(ligas).flat().filter(temValor).length;
+
   const blocosHtml = Object.entries(ligas).map(([liga, apostas]) => {
-    const filtradas = filtroData === 'Todos' ? apostas
-      : apostas.filter(a => a.data === filtroData);
+    const filtradas = (filtroData === 'Todos' ? apostas : apostas.filter(a => a.data === filtroData))
+      .filter(temValor);
     if (!filtradas.length) return '';
 
-    const cards = filtradas.map(a => `
-      <div class="aposta ${a.forte?'forte':'medio'}">
+    const cards = filtradas.map(a => {
+      const odd = (100 / a.prob).toFixed(2);
+      const corProb = a.prob >= 65 ? 'verde' : 'amarelo';
+      return `
+      <div class="aposta ${a.prob>=65?'forte':'medio'}">
         <div class="logos">
           <img src="${a.home_logo}" alt="${a.home}">
           <img src="${a.away_logo}" alt="${a.away}">
@@ -519,16 +574,17 @@ function renderApostas() {
         <div class="aposta-info">
           <div class="aposta-partida">${a.home} × ${a.away}</div>
           <div class="aposta-mercado">${a.mercado}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px">${a.data} · ${a.horario} BRT</div>
         </div>
         <div class="aposta-meta">
-          <div class="aposta-data">${a.data} · ${a.horario} BRT</div>
           <div style="text-align:center">
             <div style="font-size:10px;color:#64748b;margin-bottom:3px">Chance de acerto</div>
-            <div class="prob-badge ${a.forte?'prob-forte':'prob-medio'}">${a.prob}%</div>
-            <div class="odd-impl">odd mín. ${oddImpl(a.prob)}</div>
+            <div class="prob-badge ${a.prob>=65?'prob-forte':'prob-medio'}">${a.prob}%</div>
+            <div style="font-size:11px;color:#64748b;margin-top:4px">odd mín. <strong style="color:#f1f5f9;font-size:13px">${odd}</strong></div>
           </div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     return `<div class="liga-bloco">
       <div class="liga-header">
@@ -537,9 +593,16 @@ function renderApostas() {
       </div>
       ${cards}
     </div>`;
-  }).join('');
+  }).filter(Boolean).join('');
 
-  return filtroHtml + (blocosHtml || `<div class="vazio">📭 Nenhuma aposta para o filtro selecionado.</div>`);
+  return `
+    ${renderGlossario()}
+    <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px 14px;font-size:12px;color:#64748b;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
+      <span>🎯 Apostas com <strong style="color:#38bdf8">odd ≥ ${oddMin}</strong> e chance entre 55–67% — equilíbrio entre confiança e valor</span>
+      <span><strong style="color:#f1f5f9">${totalValor}</strong> apostas</span>
+    </div>
+    ${filtroHtml}
+    ${blocosHtml || `<div class="vazio">📭 Nenhuma aposta com odd ≥ ${oddMin} para este filtro.</div>`}`;
 }
 
 function setFiltro(f) {
