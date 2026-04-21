@@ -8,3 +8,4 @@ backend/cache.db
 # Node
 frontend/node_modules/
 frontend/dist/
+output/
