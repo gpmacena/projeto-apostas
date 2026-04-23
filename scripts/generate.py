@@ -33,7 +33,7 @@ ANO   = _now.year
 MES   = _now.month
 
 # Datas que serão buscadas
-DATAS = [(_now + timedelta(days=d)).strftime("%Y-%m-%d") for d in range(3)]
+DATAS = [(_now + timedelta(days=d)).strftime("%Y-%m-%d") for d in range(2)]
 HOJE  = DATAS[0]
 
 LIGAS = {
