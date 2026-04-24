@@ -39,13 +39,24 @@ HOJE  = DATAS[0]
 LIGAS = {
     71:  "🇧🇷 Brasileirão Série A",
     72:  "🇧🇷 Brasileirão Série B",
+    75:  "🇧🇷 Brasileirão Série C",
     2:   "🌍 Champions League",
     3:   "🌍 Europa League",
+    848: "🌍 Conference League",
     39:  "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League",
     140: "🇪🇸 La Liga",
     135: "🇮🇹 Serie A",
     78:  "🇩🇪 Bundesliga",
     61:  "🇫🇷 Ligue 1",
+    94:  "🇵🇹 Primeira Liga",
+    88:  "🇳🇱 Eredivisie",
+    144: "🇧🇪 Belgian Pro League",
+    203: "🇹🇷 Süper Lig",
+    179: "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Scottish Premiership",
+    128: "🇦🇷 Liga Argentina",
+    239: "🇨🇴 Liga BetPlay",
+    253: "🇺🇸 MLS",
+    262: "🇲🇽 Liga MX",
 }
 
 FATOR_CASA = 1.1
@@ -64,7 +75,10 @@ _cache_corners = {}
 # ── API helpers ───────────────────────────────────────────────────────────────
 
 def _temporada(liga_id: int) -> int:
-    return ANO if liga_id in {71, 72, 73, 75} else (ANO - 1 if MES < 7 else ANO)
+    # ligas sul-americanas e MLS usam ano corrente como temporada
+    if liga_id in {71, 72, 73, 75, 128, 239, 253}:
+        return ANO
+    return ANO - 1 if MES < 7 else ANO
 
 
 def _get(endpoint: str, params: dict):
