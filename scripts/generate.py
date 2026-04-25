@@ -4,8 +4,7 @@ Busca jogos dos próximos 3 dias, calcula probabilidades Poisson e gera
 index.html estático com apostas recomendadas + análise completa.
 """
 
-import os, sys, json, time, itertools, math
-import requests
+import os, sys, json, time, itertools, math, subprocess
 import numpy as np
 from scipy.stats import poisson
 
@@ -38,25 +37,13 @@ HOJE  = DATAS[0]
 
 LIGAS = {
     71:  "🇧🇷 Brasileirão Série A",
-    72:  "🇧🇷 Brasileirão Série B",
-    75:  "🇧🇷 Brasileirão Série C",
     2:   "🌍 Champions League",
     3:   "🌍 Europa League",
-    848: "🌍 Conference League",
     39:  "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League",
     140: "🇪🇸 La Liga",
     135: "🇮🇹 Serie A",
     78:  "🇩🇪 Bundesliga",
     61:  "🇫🇷 Ligue 1",
-    94:  "🇵🇹 Primeira Liga",
-    88:  "🇳🇱 Eredivisie",
-    144: "🇧🇪 Belgian Pro League",
-    203: "🇹🇷 Süper Lig",
-    179: "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Scottish Premiership",
-    128: "🇦🇷 Liga Argentina",
-    239: "🇨🇴 Liga BetPlay",
-    253: "🇺🇸 MLS",
-    262: "🇲🇽 Liga MX",
 }
 
 FATOR_CASA = 1.1
@@ -82,10 +69,22 @@ def _temporada(liga_id: int) -> int:
 
 
 def _get(endpoint: str, params: dict):
-    time.sleep(0.25)
-    r = requests.get(f"{BASE_URL}/{endpoint}", headers=HEADERS, params=params, timeout=15)
-    r.raise_for_status()
-    return r.json().get("response", [])
+    time.sleep(0.3)
+    qs = "&".join(f"{k}={v}" for k, v in params.items())
+    url = f"{BASE_URL}/{endpoint}?{qs}"
+    for attempt in range(4):
+        if attempt:
+            time.sleep(2 ** attempt)
+        result = subprocess.run(
+            ["curl", "-s", "--http1.1", "--max-time", "25", "-H", f"x-apisports-key: {API_KEY}", url],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            break
+    else:
+        raise RuntimeError(f"curl error após 4 tentativas: {result.stderr}")
+    data = json.loads(result.stdout)
+    return data.get("response", [])
 
 
 def buscar_jogos(liga_id: int, data: str) -> list:
