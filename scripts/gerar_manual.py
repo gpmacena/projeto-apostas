@@ -32,14 +32,17 @@ ULTIMOS_N    = 6
 # ── Jogos informados pelo usuário ──────────────────────────────────────────────
 # (liga_id, liga_nome, home_id, away_id, horario, season)
 JOGOS = [
-    (135, "🇮🇹 Serie A",          490, 499, "13:30", 2025),  # Cagliari x Atalanta
-    (203, "🇹🇷 Super Lig",         549, 3589,"14:00", 2025),  # Besiktas x Karagumruk
-    (119, "🇩🇰 Superliga",         400, 395, "14:00", 2025),  # Copenhagen x Vejle
-    (135, "🇮🇹 Serie A",          487, 494, "15:45", 2025),  # Lazio x Udinese
-    (39,  "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League",  33,  55,  "16:00", 2025),  # Man United x Brentford
-    (140, "🇪🇸 La Liga",          540, 539, "16:00", 2025),  # Espanyol x Levante
-    (94,  "🇵🇹 Primeira Liga",     762, 4716,"16:15", 2025),  # Gil Vicente x Casa Pia
+    (13, "🌍 Copa Libertadores", 1142, 2330, "23:00", 2026),  # Deportes Tolima x Coquimbo Unido
+    (13, "🌍 Copa Libertadores", 2546, 1135, "23:00", 2026),  # Sporting Cristal x Junior
 ]
+
+# Liga local de fallback por team_id (usada quando dados da Libertadores são escassos)
+LIGA_LOCAL = {
+    1142: (239, 2026),   # Tolima → Primera A Colombia
+    2330: (265, 2026),   # Coquimbo → Primera División Chile
+    2546: (281, 2026),   # Sporting Cristal → Primera División Peru
+    1135: (239, 2026),   # Junior → Primera A Colombia
+}
 
 # ── API ────────────────────────────────────────────────────────────────────────
 _cache = {}
@@ -278,15 +281,35 @@ def processar():
         away_info = buscar_info_time(away_id)
         print(f"    {home_info['nome']} vs {away_info['nome']}")
 
-        sh = buscar_stats(home_id, liga_id, season)
-        sa = buscar_stats(away_id, liga_id, season)
+        sh_main = buscar_stats(home_id, liga_id, season)
+        sa_main = buscar_stats(away_id, liga_id, season)
+
+        def _jogos_totais(s):
+            if not s:
+                return 0
+            return s.get("fixtures", {}).get("played", {}).get("total") or 0
+
+        def _escolher_stats(team_id, s_main):
+            """Usa liga local se Libertadores tiver < 3 jogos (amostra pequena demais)."""
+            if _jogos_totais(s_main) >= 3:
+                return s_main, liga_id, season
+            fb = LIGA_LOCAL.get(team_id)
+            if fb:
+                print(f"    ⚠️  {_jogos_totais(s_main)} jogos na liga principal → usando liga local {fb}")
+                fb_s = buscar_stats(team_id, fb[0], fb[1])
+                if fb_s:
+                    return fb_s, fb[0], fb[1]
+            return s_main, liga_id, season
+
+        sh, home_liga, home_season = _escolher_stats(home_id, sh_main)
+        sa, away_liga, away_season = _escolher_stats(away_id, sa_main)
 
         probs, mc_data, mf_data = None, None, None
         verificar = None
 
         if sh and sa:
-            mc = extrair_medias(sh, home_id, liga_id, season)
-            mf = extrair_medias(sa, away_id, liga_id, season)
+            mc = extrair_medias(sh, home_id, home_liga, home_season)
+            mf = extrair_medias(sa, away_id, away_liga, away_season)
             probs = calcular_probs(mc, mf)
             mc_data, mf_data = mc, mf
 
@@ -321,7 +344,7 @@ def processar():
             print(f"    λ={probs['lam_c']} vs {probs['lam_f']}  "
                   f"1={probs['vc']}% X={probs['emp']}% 2={probs['vf']}%")
         else:
-            print("    ⚠️ sem stats")
+            print("    ⚠️ sem stats suficientes")
 
         jogo = {
             "data":     "Hoje",
