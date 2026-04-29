@@ -36,7 +36,15 @@ DATAS = [(_now + timedelta(days=d)).strftime("%Y-%m-%d") for d in range(2)]
 HOJE  = DATAS[0]
 
 LIGAS = {
+    # Sul-América
+    13:  "🌍 Copa Libertadores",
+    11:  "🌍 Copa Sudamericana",
     71:  "🇧🇷 Brasileirão Série A",
+    72:  "🇧🇷 Brasileirão Série B",
+    239: "🇨🇴 Primera A Colombia",
+    265: "🇨🇱 Primera División Chile",
+    281: "🇵🇪 Primera División Peru",
+    # Europa
     2:   "🌍 Champions League",
     3:   "🌍 Europa League",
     39:  "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League",
@@ -44,6 +52,9 @@ LIGAS = {
     135: "🇮🇹 Serie A",
     78:  "🇩🇪 Bundesliga",
     61:  "🇫🇷 Ligue 1",
+    94:  "🇵🇹 Primeira Liga",
+    203: "🇹🇷 Super Lig",
+    119: "🇩🇰 Superliga",
 }
 
 FATOR_CASA = 1.1
@@ -62,8 +73,8 @@ _cache_corners = {}
 # ── API helpers ───────────────────────────────────────────────────────────────
 
 def _temporada(liga_id: int) -> int:
-    # ligas sul-americanas e MLS usam ano corrente como temporada
-    if liga_id in {71, 72, 73, 75, 128, 239, 253}:
+    # ligas sul-americanas e copas CONMEBOL usam ano corrente como temporada
+    if liga_id in {11, 13, 71, 72, 73, 75, 128, 239, 253, 265, 281}:
         return ANO
     return ANO - 1 if MES < 7 else ANO
 
